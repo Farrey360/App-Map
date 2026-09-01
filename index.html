@@ -1,0 +1,2621 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#0e0f13">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="BoP Map 2">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>BoP Map Editor 2</title>
+<style>
+  :root{
+    --bg:#0e0f13; --panel:#15171d; --panel2:#1c1f27; --line:#2a2e39;
+    --ink:#e7e9ee; --ink-dim:#9aa0ae; --accent:#4c8dff; --accent-ink:#0b1220;
+    --bar-w:58px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--ink);
+    font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    overscroll-behavior:none; touch-action:none; -webkit-user-select:none; user-select:none}
+  #app{display:flex;height:100%;width:100%}
+  #app[hidden]{display:none}
+
+  /* ---- accueil ---- */
+  #home{position:fixed;inset:0;background:var(--bg);z-index:10;overflow:auto;
+    display:flex;justify-content:center;touch-action:pan-y;-webkit-overflow-scrolling:touch}
+  #home[hidden]{display:none}
+  #home-inner{width:100%;max-width:1100px;padding:32px 20px 60px}
+  #home-inner h1{font-size:19px;font-weight:600;margin:0 0 22px;color:var(--ink)}
+  #home-grid{display:flex;flex-wrap:wrap;gap:16px}
+  .proj-card{position:relative;width:200px;height:160px;border-radius:12px;border:1px solid var(--line);
+    background:var(--panel);display:flex;flex-direction:column;overflow:hidden;
+    cursor:pointer;padding:0;text-align:left;color:var(--ink)}
+  .proj-card img{width:100%;height:112px;object-fit:contain;background:#08090b;display:block}
+  .proj-card .pname{font-size:12.5px;padding:8px 10px 0;font-weight:600;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis}
+  .proj-card .pdate{font-size:11px;padding:2px 10px 8px;color:var(--ink-dim)}
+  .proj-card:hover{border-color:var(--accent)}
+  .proj-del{position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:7px;
+    border:1px solid var(--line);background:rgba(11,12,16,.75);color:var(--ink);
+    font-size:16px;line-height:1;cursor:pointer}
+  .proj-del:hover{background:#e0645a;border-color:#e0645a;color:#fff}
+  .proj-card.new{align-items:center;justify-content:center;border:2px dashed var(--line);
+    background:transparent;color:var(--ink-dim)}
+  .proj-card.new svg{width:34px;height:34px;fill:none;stroke:currentColor;stroke-width:1.6}
+  .proj-card.new:hover{border-color:var(--accent);color:var(--accent)}
+
+  /* ---- left toolbar ---- */
+  #bar{width:var(--bar-w);flex:0 0 var(--bar-w);background:var(--panel);border-right:1px solid var(--line);
+    display:flex;flex-direction:column;align-items:center;padding:6px 0;gap:4px;z-index:20;
+    overflow-y:auto;overflow-x:hidden;touch-action:pan-y;scrollbar-width:none}
+  #bar::-webkit-scrollbar{display:none}
+  #bar .sep{width:60%;height:1px;background:var(--line);margin:4px 0}
+  #bar .spring{flex:1}
+  .tbtn{width:36px;height:36px;flex:0 0 36px;border:0;border-radius:9px;background:transparent;color:var(--ink-dim);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative}
+  .tbtn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .tbtn:hover{background:var(--panel2);color:var(--ink)}
+  .tbtn.on{background:var(--accent);color:var(--accent-ink)}
+  .tbtn.on svg{stroke:var(--accent-ink)}
+  .tbtn[disabled]{opacity:.35;pointer-events:none}
+  .tbtn .badge{position:absolute;right:2px;bottom:1px;font-size:10px;color:var(--ink-dim)}
+  .smbtn{width:28px;height:28px;flex:0 0 28px;border-radius:7px}
+  .smbtn svg{width:14px;height:14px}
+  .submode-row{display:contents}
+  #bar:not([data-super="paint"]) .submode-row{display:none}
+  #bar:not([data-mode="province"]) .only-prov{display:none}
+  #bar:not([data-mode="country"]) .only-country{display:none}
+  #bar:not([data-mode="region"]) .only-region{display:none}
+  #bar:not([data-mode="edit"]) .only-edit{display:none}
+  #hud:not([data-mode="province"]) .only-prov{display:none}
+  #hud:not([data-mode="country"]) .only-country{display:none}
+  #hud:not([data-mode="region"]) .only-region{display:none}
+  #hud:not([data-mode="edit"]) .only-editprov,
+  #hud[data-mode="edit"]:not([data-etarget="province"]) .only-editprov{display:none}
+  #hud .tchip{width:24px;height:24px;flex:0 0 24px;border-radius:6px;border:2px solid transparent;
+    padding:0;cursor:pointer;background:var(--tc,#333)}
+  #hud .tchip.none{background:repeating-linear-gradient(45deg,#2a2e38,#2a2e38 4px,#3a3f4b 4px,#3a3f4b 8px)}
+  #hud .tchip.on{border-color:var(--ink);box-shadow:0 0 0 2px var(--panel)}
+
+  /* ---- barre de transformation d'un calque de fond ---- */
+  #xformbar{position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:16;
+    display:flex;align-items:center;gap:10px;background:rgba(21,23,29,.94);border:1px solid var(--line);
+    border-radius:10px;padding:6px 8px 6px 14px;font-size:13px;color:var(--ink);backdrop-filter:blur(6px)}
+  #xformbar[hidden]{display:none}
+  #xformbar button{border:1px solid var(--line);background:var(--panel2);color:var(--ink);border-radius:8px;
+    padding:5px 10px;cursor:pointer;font-size:13px}
+
+  /* ---- edit panel ---- */
+  #editpanel{position:absolute;top:8px;right:8px;width:min(300px,86vw);max-height:calc(100% - 90px);
+    overflow:auto;background:rgba(21,23,29,.96);border:1px solid var(--line);border-radius:12px;
+    padding:12px 14px;z-index:16;backdrop-filter:blur(6px)}
+  #editpanel h3{margin:0 0 10px;font-size:14px}
+  #editpanel label{display:block;margin:9px 0;font-size:12px;color:var(--ink-dim)}
+  #editpanel input,#editpanel select,#editpanel textarea{display:block;width:100%;margin-top:3px;
+    background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;
+    padding:6px 8px;font:13px/1.3 inherit}
+  #editpanel textarea{resize:vertical}
+  #editpanel .ep-ro{margin-top:10px;padding-top:9px;border-top:1px solid var(--line);
+    font-size:12px;color:var(--ink-dim);line-height:1.6}
+  #editpanel .ep-empty{font-size:12px;color:var(--ink-dim);line-height:1.5}
+  #hud .cname{background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;
+    padding:5px 9px;font-size:13px;width:150px;max-width:40vw}
+  #hud select.mini{max-width:44vw}
+
+  /* ---- stage ---- */
+  #stage{flex:1;position:relative;overflow:hidden;background:#08090b}
+  #cv{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;
+    image-rendering:optimizeSpeed;image-rendering:-webkit-optimize-contrast;image-rendering:crisp-edges;image-rendering:pixelated}
+
+  /* ---- bottom HUD ---- */
+  #hud{position:absolute;left:8px;right:8px;bottom:8px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+    background:rgba(21,23,29,.92);border:1px solid var(--line);border-radius:12px;padding:7px 10px;z-index:15;backdrop-filter:blur(6px)}
+  #hud .grp{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  #hud .swatch{width:26px;height:26px;border-radius:7px;border:1px solid #0006;flex:0 0 26px}
+  #hud .pid{font-variant-numeric:tabular-nums;color:var(--ink-dim);min-width:44px}
+  #hud input[type=range]{width:130px;accent-color:var(--accent)}
+  #hud .val{font-variant-numeric:tabular-nums;color:var(--ink-dim);min-width:26px;text-align:right}
+  #hud label.chk{display:flex;align-items:center;gap:5px;color:var(--ink-dim);cursor:pointer}
+  #hud .stat{color:var(--ink-dim);font-variant-numeric:tabular-nums}
+  #hud .mini{border:1px solid var(--line);background:var(--panel2);color:var(--ink);border-radius:8px;
+    padding:5px 9px;cursor:pointer;font-size:13px}
+  #hud .mini:hover{border-color:var(--accent)}
+  #savedot{width:8px;height:8px;border-radius:50%;background:#3a3f4b;flex:0 0 8px}
+  #savedot.dirty{background:#e0a33a}
+  #savedot.ok{background:#4bbf73}
+
+  /* ---- overlays ---- */
+  .sheet{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;z-index:40;
+    background:rgba(4,5,7,.55)}
+  .sheet[hidden]{display:none}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px 20px;max-width:420px;width:calc(100% - 40px);max-height:80%;overflow:auto}
+  .card h2{margin:0 0 12px;font-size:16px}
+  .card h3{margin:16px 0 6px;font-size:13px;color:var(--ink-dim);text-transform:uppercase;letter-spacing:.04em}
+  .card .row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--line)}
+  .card .row:last-child{border-bottom:0}
+  .card button.act{background:var(--accent);color:var(--accent-ink);border:0;border-radius:9px;padding:8px 14px;cursor:pointer;font-weight:600}
+  .card button.ghost{background:var(--panel2);color:var(--ink);border:1px solid var(--line);border-radius:9px;padding:8px 14px;cursor:pointer}
+  .card .x{position:sticky;top:0;float:right;background:transparent;border:0;color:var(--ink-dim);font-size:20px;cursor:pointer;line-height:1}
+  .card kbd{background:var(--panel2);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:1px 6px;font:12px/1 ui-monospace,monospace}
+  .card table{width:100%;border-collapse:collapse}
+  .card td{padding:5px 4px;border-bottom:1px solid var(--line);vertical-align:top}
+  .card td:first-child{white-space:nowrap;color:var(--ink-dim)}
+  .card input[type=range]{width:150px;accent-color:var(--accent)}
+  .muted{color:var(--ink-dim);font-size:12px;margin-top:10px}
+
+  /* ---- calques de fond ---- */
+  #layers .card{max-width:480px}
+  .lay-row{border:1px solid var(--line);border-radius:10px;padding:9px 10px;margin:0 0 10px;
+    background:var(--panel2)}
+  .lay-row.dragging{opacity:.5}
+  .lay-row .lay-top{display:flex;align-items:center;gap:8px}
+  .lay-handle{cursor:grab;color:var(--ink-dim);font-size:16px;line-height:1;padding:2px 4px;
+    touch-action:none;user-select:none}
+  .lay-eye{background:transparent;border:0;color:var(--ink-dim);cursor:pointer;padding:2px;
+    display:flex;align-items:center}
+  .lay-eye svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8}
+  .lay-eye.off{opacity:.4}
+  .lay-name{flex:1;background:var(--panel);border:1px solid var(--line);color:var(--ink);
+    border-radius:7px;padding:5px 8px;font:13px/1.3 inherit;min-width:0}
+  .lay-x{background:transparent;border:0;color:var(--ink-dim);cursor:pointer;font-size:16px;padding:2px 4px}
+  .lay-x:hover{color:#e0645a}
+  .lay-bottom{display:flex;align-items:center;gap:8px;margin-top:8px}
+  .lay-bottom input[type=range]{flex:1;width:auto;accent-color:var(--accent)}
+  .lay-opval{font-size:11px;color:var(--ink-dim);min-width:30px;text-align:right}
+  .lay-xform{background:var(--panel);border:1px solid var(--line);color:var(--ink);border-radius:7px;
+    padding:4px 9px;cursor:pointer;font-size:12px}
+  .lay-xform.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+
+  #toast{position:absolute;left:50%;bottom:74px;transform:translateX(-50%);z-index:50;
+    background:#0b0c10;border:1px solid var(--line);border-radius:10px;padding:9px 14px;color:var(--ink);
+    opacity:0;transition:opacity .18s;pointer-events:none;max-width:80%;text-align:center}
+  #toast.show{opacity:1}
+
+  #boot{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:var(--bg);z-index:60;color:var(--ink-dim)}
+</style>
+</head>
+<body>
+<div id="home">
+  <div id="home-inner">
+    <h1>BoP Map Editor 2 — Projets</h1>
+    <div id="home-grid">
+      <button class="proj-card new" id="home-new" title="Nouveau projet">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- nouveau projet -->
+<div class="sheet" id="newproj" hidden>
+  <div class="card">
+    <button class="x" data-close>×</button>
+    <h2>Nouveau projet</h2>
+    <label style="display:block;margin:9px 0;font-size:12px;color:var(--ink-dim)">Nom (facultatif)
+      <input id="np-name" class="cname" style="width:100%;margin-top:3px" placeholder="Nom du projet" autocomplete="off"></label>
+    <div class="row"><span>Largeur</span><input type="number" id="np-w" min="64" max="40000" value="10976" style="width:110px"></div>
+    <div class="row"><span>Hauteur</span><input type="number" id="np-h" min="64" max="40000" value="4096" style="width:110px"></div>
+    <p class="muted">Libre, jusqu'à 200 millions de pixels au total (largeur × hauteur) —
+      au-delà, ça risque de ramer ou de manquer de mémoire sur tablette.</p>
+    <div class="row"><span>Image de fond (facultatif)</span><button class="ghost" id="np-bgpick">Choisir…</button></div>
+    <p class="muted" id="np-bgname"></p>
+    <div class="row" style="justify-content:flex-end;border-bottom:0;gap:8px">
+      <button class="ghost" data-close>Annuler</button>
+      <button class="act" id="np-create">Créer</button>
+    </div>
+  </div>
+</div>
+<input type="file" id="np-bgfile" accept="image/*" hidden>
+
+<div id="app" hidden>
+  <div id="bar" data-mode="province" data-super="paint">
+    <button class="tbtn" id="t-supertoggle" title="Passer en mode Édition">
+      <svg class="ic-edit" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1"/><path d="M8 10h8M8 14h8M8 18h5"/></svg>
+      <svg class="ic-paint" viewBox="0 0 24 24" hidden><path d="M4 20c2 0 3-1 3-3 0-1.5-1.2-2.5-2.5-2.5C3 14.5 2 16 2 18c0 1 .5 2 2 2Z"/><path d="M8 15 18.5 4.5a2.1 2.1 0 0 1 3 3L11 18"/></svg></button>
+    <div class="submode-row">
+      <div class="sep"></div>
+      <button class="tbtn smbtn submode on" data-submode="province" title="Provinces (M)">
+        <svg viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg></button>
+      <button class="tbtn smbtn submode" data-submode="country" title="Pays (M)">
+        <svg viewBox="0 0 24 24"><path d="M5 21V4M5 5c3-2 6 2 9 0s6 0 6 0v8s-3 2-6 0-6-2-9 0"/></svg></button>
+      <button class="tbtn smbtn submode" data-submode="region" title="Régions (M)">
+        <svg viewBox="0 0 24 24"><path d="M12 3 3 8v8l9 5 9-5V8zM3 8l9 5 9-5M12 13v8"/></svg></button>
+    </div>
+    <div class="sep"></div>
+    <button class="tbtn only-prov" id="t-new" title="Nouvelle province (N)">
+      <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+    <button class="tbtn only-prov" data-tool="brush" title="Pinceau (B)">
+      <svg viewBox="0 0 24 24"><path d="M4 20c2 0 3-1 3-3 0-1.5-1.2-2.5-2.5-2.5C3 14.5 2 16 2 18c0 1 .5 2 2 2Z"/><path d="M8 15 18.5 4.5a2.1 2.1 0 0 1 3 3L11 18"/></svg></button>
+    <button class="tbtn only-prov" data-tool="erase" title="Gomme (E)">
+      <svg viewBox="0 0 24 24"><path d="m5 15 6-6 7 7-3 3H8z"/><path d="M11 9 15 5a2 2 0 0 1 3 0l3 3a2 2 0 0 1 0 3l-4 4"/><path d="M4 20h11"/></svg></button>
+    <button class="tbtn only-prov" data-tool="bucket" title="Pot de remplissage (G)">
+      <svg viewBox="0 0 24 24"><path d="M6 3 4 5l8 8 6-6-6-6-2 2"/><path d="M12 13 6.5 7.5 3 11a3.5 3.5 0 0 0 0 5l1.5 1.5a3.5 3.5 0 0 0 5 0Z"/><path d="M20 14c0 1.7-2 3-2 3s-2-1.3-2-3a2 2 0 0 1 4 0Z"/></svg></button>
+    <button class="tbtn only-prov" data-tool="pick" title="Pipette (I)">
+      <svg viewBox="0 0 24 24"><path d="m19 3 2 2-9 9-3 1 1-3z"/><path d="m14 8-9 9-2 4 4-2 9-9"/></svg></button>
+    <button class="tbtn only-country" id="c-new" title="Nouveau pays (N)">
+      <svg viewBox="0 0 24 24"><path d="M5 21V4M5 5c3-2 6 2 9 0s6 0 6 0v8s-3 2-6 0-6-2-9 0"/><path d="M17 15v6M14 18h6"/></svg></button>
+    <button class="tbtn only-country" data-ctool="assign" title="Assigner au pays (A)">
+      <svg viewBox="0 0 24 24"><path d="M4 20c2 0 3-1 3-3 0-1.5-1.2-2.5-2.5-2.5C3 14.5 2 16 2 18c0 1 .5 2 2 2Z"/><path d="M8 15 18.5 4.5a2.1 2.1 0 0 1 3 3L11 18"/></svg></button>
+    <button class="tbtn only-country" data-ctool="cpick" title="Pipette pays (I)">
+      <svg viewBox="0 0 24 24"><path d="m19 3 2 2-9 9-3 1 1-3z"/><path d="m14 8-9 9-2 4 4-2 9-9"/></svg></button>
+    <button class="tbtn only-region" id="r-new" title="Nouvelle région (N)">
+      <svg viewBox="0 0 24 24"><path d="M12 3 3 8v8l9 5 9-5V8zM3 8l9 5 9-5"/><path d="M18 14v6M15 17h6"/></svg></button>
+    <button class="tbtn only-region" data-rtool="assign" title="Assigner à la région (A)">
+      <svg viewBox="0 0 24 24"><path d="M4 20c2 0 3-1 3-3 0-1.5-1.2-2.5-2.5-2.5C3 14.5 2 16 2 18c0 1 .5 2 2 2Z"/><path d="M8 15 18.5 4.5a2.1 2.1 0 0 1 3 3L11 18"/></svg></button>
+    <button class="tbtn only-region" data-rtool="merge" title="Fusionner (R) : garde la région active, absorbe celle qu'on touche">
+      <svg viewBox="0 0 24 24"><path d="M7 4v4a5 5 0 0 0 5 5 5 5 0 0 1 5 5v1M17 4v4a5 5 0 0 1-5 5"/><path d="m14 17 3 3 3-3"/></svg></button>
+    <button class="tbtn only-region" data-rtool="rpick" title="Pipette région (I)">
+      <svg viewBox="0 0 24 24"><path d="m19 3 2 2-9 9-3 1 1-3z"/><path d="m14 8-9 9-2 4 4-2 9-9"/></svg></button>
+    <button class="tbtn only-edit" data-etarget="province" title="Éditer une province (1)">
+      <svg viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"/></svg></button>
+    <button class="tbtn only-edit" data-etarget="country" title="Éditer un pays (2)">
+      <svg viewBox="0 0 24 24"><path d="M5 21V4M5 5c3-2 6 2 9 0s6 0 6 0v8s-3 2-6 0-6-2-9 0"/></svg></button>
+    <button class="tbtn only-edit" data-etarget="region" title="Éditer une région (3)">
+      <svg viewBox="0 0 24 24"><path d="M12 3 3 8v8l9 5 9-5V8zM3 8l9 5 9-5M12 13v8"/></svg></button>
+    <div class="sep"></div>
+    <button class="tbtn" id="t-pan" title="Main / déplacer (H)">
+      <svg viewBox="0 0 24 24"><path d="M8 13V6a1.5 1.5 0 0 1 3 0v5m0-1V4.5a1.5 1.5 0 0 1 3 0V11m0-1.5a1.5 1.5 0 0 1 3 0V16a5 5 0 0 1-5 5h-1.5a5 5 0 0 1-4-2l-3.2-4.3a1.5 1.5 0 0 1 2.4-1.8L8 13"/></svg></button>
+    <button class="tbtn" id="t-undo" title="Annuler (Ctrl+Z)">
+      <svg viewBox="0 0 24 24"><path d="M9 7 4 12l5 5"/><path d="M4 12h11a5 5 0 0 1 0 10h-3"/></svg></button>
+    <button class="tbtn" id="t-redo" title="Rétablir (Ctrl+Y)">
+      <svg viewBox="0 0 24 24"><path d="m15 7 5 5-5 5"/><path d="M20 12H9a5 5 0 0 0 0 10h3"/></svg></button>
+    <button class="tbtn" id="t-fit" title="Voir toute la carte (F)">
+      <svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+    <div class="spring"></div>
+    <button class="tbtn" id="t-bg" title="Fonds (calques)">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.8"/><path d="m4 17 5-5 4 4 3-3 4 4"/></svg></button>
+    <button class="tbtn" id="t-set" title="Réglages / fichier">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+  </div>
+
+  <div id="stage">
+    <canvas id="cv"></canvas>
+
+    <div id="hud" data-mode="province" data-etarget="province">
+      <div class="grp only-prov" id="grp-prov">
+        <div class="swatch" id="swatch"></div>
+        <span class="pid" id="pid">P—</span>
+        <button class="mini" id="hud-new">Nouvelle</button>
+      </div>
+      <div class="grp only-prov" id="grp-size">
+        <span class="stat">Taille</span>
+        <input type="range" id="size" min="1" max="90" value="14">
+        <span class="val" id="sizeval">14</span>
+      </div>
+      <label class="chk only-prov"><input type="checkbox" id="pressure" checked> Pression</label>
+      <label class="chk only-prov"><input type="checkbox" id="overwrite"> Écraser</label>
+
+      <div class="grp only-country" id="grp-country">
+        <div class="swatch" id="cswatch"></div>
+        <select id="csel" class="mini"></select>
+        <input id="cname" class="cname" placeholder="nom du pays" autocomplete="off">
+        <button class="mini" id="hud-cnew">Nouveau pays</button>
+        <label class="chk"><input type="checkbox" id="cerase"> Retirer</label>
+        <span class="stat" id="ccount">0/0</span>
+      </div>
+
+      <div class="grp only-region" id="grp-region">
+        <div class="swatch" id="rswatch"></div>
+        <select id="rsel" class="mini" title="région active"></select>
+        <input id="rname" class="cname" placeholder="nom de la région" autocomplete="off">
+        <button class="mini" id="hud-rnew">Nouvelle région</button>
+        <label class="chk"><input type="checkbox" id="rerase"> Retirer</label>
+        <span class="stat" id="rcount">0/0</span>
+      </div>
+
+      <div class="grp only-editprov" id="grp-editprov"><!-- rempli par buildTerrainChips() --></div>
+
+      <div class="grp">
+        <span class="stat" id="zoomstat">100 %</span>
+        <span class="stat" id="pcount">0 prov.</span>
+        <span id="savedot" title="état sauvegarde"></span>
+      </div>
+    </div>
+
+    <div id="editpanel" hidden></div>
+
+    <div id="xformbar" hidden>
+      <span id="xformname">Fond</span>
+      <button class="mini" id="xform-done">Terminé</button>
+    </div>
+  </div>
+</div>
+
+<!-- settings / file -->
+<div class="sheet" id="settings" hidden>
+  <div class="card">
+    <button class="x" data-close>×</button>
+    <h2>Réglages &amp; fichier</h2>
+
+    <h3>Aide</h3>
+    <div class="row"><span>Comment utiliser l'app</span><button class="ghost" id="s-help">Voir le tuto</button></div>
+
+    <h3>Projet</h3>
+    <div class="row"><span>Retour à l'accueil</span><button class="ghost" id="s-home">Accueil</button></div>
+    <div class="row"><span>Sauver le projet (.bopmap)</span><button class="act" id="s-save">Sauver</button></div>
+    <div class="row"><span>Importer un fichier .bopmap</span><button class="ghost" id="s-open">Ouvrir…</button></div>
+    <div class="row"><span>Sauvegarde auto (navigateur)</span><label class="chk"><input type="checkbox" id="s-auto" checked> activée</label></div>
+    <div class="row"><span>Sauvegarder maintenant (navigateur)</span><button class="act" id="s-savenow">Sauvegarder</button></div>
+    <div class="row"><span>Supprimer les provinces vides</span><button class="ghost" id="s-compact">Nettoyer</button></div>
+    <div class="row"><span>Vider ce projet</span><button class="ghost" id="s-reset">Repartir de zéro</button></div>
+    <p class="muted">« Sauvegarder maintenant » force l'écriture immédiate dans le navigateur
+      (par défaut ça se fait ~4 s après chaque modification, ou en quittant l'app) — utile
+      juste avant de fermer si tu n'es pas sûr. « Importer » ajoute un nouveau projet dans la
+      liste de l'accueil, il n'écrase jamais celui ouvert ici. « Nettoyer » retire les provinces
+      créées mais jamais dessinées (clics « Nouvelle » en trop) et renumérote le reste de 1 à N —
+      vide l'historique Annuler. « Vider ce projet » efface le dessin mais garde la taille et le nom.</p>
+
+    <h3>Zone de travail</h3>
+    <div class="row"><span>Taille actuelle</span><span class="muted" id="s-cursize">—</span></div>
+    <div class="row"><span>Agrandir à</span>
+      <span><input type="number" id="s-neww" min="1" max="40000" style="width:85px">
+      × <input type="number" id="s-newh" min="1" max="40000" style="width:85px">
+      <button class="ghost" id="s-enlarge">Agrandir</button></span></div>
+    <p class="muted">Seulement plus grand, jamais plus petit. Le dessin déjà fait garde sa position
+      en haut à gauche, la nouvelle zone est vide. Vide l'historique Annuler/Rétablir.</p>
+
+    <h3>Fonds (calques)</h3>
+    <div class="row"><span>Jusqu'à 3 images de repère, réglables individuellement</span><button class="ghost" id="s-layers">Gérer…</button></div>
+
+    <h3>Affichage</h3>
+    <div class="row"><span>Bords d'aide (non exportés)</span><label class="chk"><input type="checkbox" id="s-edges"> montrer</label></div>
+    <div class="row"><span>Dessin au doigt</span><label class="chk"><input type="checkbox" id="s-finger" checked> autorisé</label></div>
+    <div class="row"><span>Plein écran</span><button class="ghost" id="s-fullscreen">Activer</button></div>
+
+    <h3>Export</h3>
+    <div class="row"><span>Export complet (PNG + JSON)</span><button class="act" id="s-export">Exporter</button></div>
+    <p class="muted">Crée <b>provinces.png</b> (couleur↔id, à la résolution de travail du projet) + <b>provinces.json</b> /
+      <b>regions.json</b> / <b>countries.json</b>, dans un dossier daté du jour
+      (ex. Téléchargements/bme2_export_2026-09-02/). Toujours les mêmes noms de fichier :
+      un nouvel export le même jour écrase les précédents du jour, les jours passés restent.
+      Marche mieux sur PC (grande image).</p>
+  </div>
+</div>
+
+<!-- calques de fond -->
+<div class="sheet" id="layers" hidden>
+  <div class="card">
+    <button class="x" data-close>×</button>
+    <h2>Fonds (calques)</h2>
+    <p class="muted">Jusqu'à 3 images, chacune réglable : visibilité, opacité, ordre (glisser
+      la poignée ⠿), nom, position/taille sur la carte.</p>
+    <div id="lay-list"></div>
+    <div class="row" style="border-bottom:0"><span></span><button class="ghost" id="lay-add">+ Ajouter un fond</button></div>
+  </div>
+</div>
+
+<!-- help -->
+<div class="sheet" id="help" hidden>
+  <div class="card">
+    <button class="x" data-close>×</button>
+    <h2>Comment ça marche</h2>
+    <p>Chaque province est un <b>aplat de couleur</b>. Tu dessines par-dessus le vide : ton trait
+      ne recouvre <b>jamais</b> une province voisine (sauf mode « Écraser »). Ferme le contour d'une
+      province et l'intérieur se <b>remplit tout seul</b> au lever du stylet.</p>
+    <table>
+      <tr><td>Nouvelle province</td><td>bouton <b>+</b> ou <kbd>N</kbd> — nouvelle couleur</td></tr>
+      <tr><td>Pinceau / Gomme</td><td><kbd>B</kbd> / <kbd>E</kbd></td></tr>
+      <tr><td>Pot (remplit le vide)</td><td><kbd>G</kbd></td></tr>
+      <tr><td>Pipette (reprendre une province)</td><td><kbd>I</kbd> — puis pinceau pour l'agrandir</td></tr>
+      <tr><td>Déplacer la vue</td><td>2 doigts, ou outil Main <kbd>H</kbd>, ou clic molette</td></tr>
+      <tr><td>Zoom</td><td>pincer à 2 doigts, ou molette</td></tr>
+      <tr><td>Annuler / Rétablir</td><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd></td></tr>
+      <tr><td>Taille du pinceau</td><td><kbd>[</kbd> <kbd>]</kbd></td></tr>
+      <tr><td>Voir toute la carte</td><td><kbd>F</kbd></td></tr>
+    </table>
+    <h2 style="margin-top:18px">Peinture et Édition</h2>
+    <p>En haut à gauche, un bouton bascule entre <b>Peinture</b> (dessiner) et
+      <b>Édition</b> (remplir les infos) — son icône montre le mode vers lequel tu vas
+      basculer. En mode Peinture, 3 petits boutons juste en dessous choisissent la
+      couche : <b>Provinces / Pays / Régions</b> (touche <kbd>M</kbd> pour passer de
+      l'une à l'autre au clavier).</p>
+    <h2 style="margin-top:18px">Mode Pays</h2>
+    <p>Chaque province se colore selon son pays ; les provinces sans pays restent sombres.</p>
+    <table>
+      <tr><td>Nouveau pays</td><td>bouton drapeau <b>+</b> ou <kbd>N</kbd></td></tr>
+      <tr><td>Assigner</td><td>pinceau <kbd>A</kbd> : clique / glisse sur les provinces → elles rejoignent le pays actif</td></tr>
+      <tr><td>Retirer</td><td>coche « Retirer » (ou clic droit) puis clique les provinces</td></tr>
+      <tr><td>Choisir le pays actif</td><td>liste déroulante, ou pipette <kbd>I</kbd> sur une province</td></tr>
+      <tr><td>Renommer</td><td>champ « nom du pays » (facultatif, modifiable plus tard)</td></tr>
+    </table>
+    <h2 style="margin-top:18px">Mode Régions</h2>
+    <p>Fonctionne comme le mode Pays : crée une région, puis peins des provinces dessus.
+      Le <b>pays</b> de la région est déduit automatiquement des provinces peintes — pas de
+      pays à choisir. Les provinces déjà sans région apparaissent en sombre.</p>
+    <table>
+      <tr><td>Nouvelle région</td><td>bouton <b>+</b> ou <kbd>N</kbd></td></tr>
+      <tr><td>Assigner</td><td>pinceau <kbd>A</kbd> : clique / glisse sur les provinces</td></tr>
+      <tr><td>Fusionner</td><td><kbd>R</kbd> : touche une province → sa région est absorbée par la région active</td></tr>
+      <tr><td>Retirer</td><td>coche « Retirer » (ou clic droit)</td></tr>
+      <tr><td>Choisir / prélever une région</td><td>liste déroulante, ou pipette <kbd>I</kbd> sur une province</td></tr>
+    </table>
+    <h2 style="margin-top:18px">Mode Édition</h2>
+    <p>Tape le bouton bascule en haut de la barre (icône pinceau) pour y entrer. Choisis
+      ce que tu édites — <b>Province</b> <kbd>1</kbd> /
+      <b>Pays</b> <kbd>2</kbd> / <b>Région</b> <kbd>3</kbd>.</p>
+    <table>
+      <tr><td>Province</td><td><b>stylo terrain</b> : choisis un terrain dans la palette du bas
+        (<kbd>[</kbd> / <kbd>]</kbd> pour changer), puis glisse sur la carte — chaque province
+        touchée prend ce terrain. Clic droit = remet « non défini ». Annuler/Rétablir marche.</td></tr>
+      <tr><td>Pays</td><td>clique un pays → panneau à droite : nom + code 3 lettres (généré du nom, ex. France→FRA ; modifiable, vider = revenir à l'auto)</td></tr>
+      <tr><td>Région</td><td>clique une région → panneau à droite : nom, nombre d'habitants, notes</td></tr>
+    </table>
+    <p class="muted">Les infos Pays/Région ne passent pas par Annuler/Rétablir. Tout est
+      sauvegardé automatiquement.</p>
+    <h2 style="margin-top:18px">Fonds (calques)</h2>
+    <p>Bouton image dans la barre de gauche, ou « Fonds » dans Réglages. Jusqu'à <b>3 images</b>
+      de repère, chacune un calque indépendant.</p>
+    <table>
+      <tr><td>Ajouter</td><td>« + Ajouter un fond » (désactivé au-delà de 3)</td></tr>
+      <tr><td>Visibilité / opacité</td><td>œil et curseur sur chaque calque</td></tr>
+      <tr><td>Réordonner</td><td>glisser la poignée <b>⠿</b> — l'ordre de la liste = l'ordre d'affichage (le 1ᵉʳ est devant)</td></tr>
+      <tr><td>Renommer / supprimer</td><td>champ nom / bouton <b>×</b></td></tr>
+      <tr><td>Déplacer / redimensionner</td><td>« Position / taille » — affiche des poignées sur la carte : glisser
+        l'intérieur pour déplacer, un coin pour redimensionner (ratio conservé) ; <b>Terminé</b> pour sortir</td></tr>
+    </table>
+    <p class="muted">Stylet : la pression fait varier l'épaisseur. Quand le stylet touche, le doigt/paume
+      est ignoré. Le travail est sauvegardé automatiquement dans le navigateur ; utilise
+      « Sauver le projet » pour un fichier que tu peux déplacer entre tablette et PC.</p>
+  </div>
+</div>
+
+<div id="toast"></div>
+<div id="boot">Chargement…</div>
+
+<input type="file" id="fileproj" accept=".bopmap,application/octet-stream" hidden>
+<input type="file" id="filebg" accept="image/*" hidden>
+
+<script>
+"use strict";
+(function(){
+/* ============================ config ============================ */
+const DEFAULT_W = 10976, DEFAULT_H = 4096;   // résolution de travail par défaut (nouveau projet)
+const MIN_SIDE = 64;                   // taille mini d'un côté
+const MAX_SIDE = 40000;                // taille maxi d'un côté
+const MAX_PIXELS = 200_000_000;        // plafond total (perf/mémoire) — couvre large le ×2 (21952×8192 ≈ 180M)
+let W = DEFAULT_W, H = DEFAULT_H;      // résolution de travail du projet ouvert (peut varier par projet)
+let NPX = W*H;
+const MAXID = 65534;                  // limite (Uint16, 0 = vide)
+const MAX_CANVAS_SIDE = 8192;        // borne de sûreté sur un très grand écran
+const AUTOSAVE_MS = 4000;
+const UNDO_MAX = 24;
+const BG_MAXSIDE = 5488;              // le fond est réduit à ça max
+
+/* ============================ state ============================ */
+let ids = new Uint16Array(NPX);      // province id par pixel, 0 = vide (réalloué à l'ouverture d'un projet)
+const palR = new Uint8Array(MAXID+1), palG = new Uint8Array(MAXID+1), palB = new Uint8Array(MAXID+1);
+let maxId = 0;                        // plus grand id utilisé
+let curId = 0;                        // province active
+let topProvEmpty = false;             // la dernière province créée n'a encore aucun pixel -> « Nouvelle » la réutilise
+let liveProv = 0;                     // nb de provinces réellement présentes (calc paresseux)
+
+/* --- pays --- */
+const CMAX = 65534;
+const provCountry = new Uint16Array(MAXID+1);              // pays de chaque province, 0 = aucun
+const cpalR = new Uint8Array(CMAX+1), cpalG = new Uint8Array(CMAX+1), cpalB = new Uint8Array(CMAX+1);
+const countries = [null];                                 // countries[cid] = { name }
+let maxCid = 0, curCid = 0;
+
+/* --- régions (sous un pays) --- */
+const RMAX = 65534;
+const provRegion = new Uint16Array(MAXID+1);              // région de chaque province, 0 = aucune
+const rpalR = new Uint8Array(RMAX+1), rpalG = new Uint8Array(RMAX+1), rpalB = new Uint8Array(RMAX+1);
+const regions = [null];                                   // regions[rid] = { name, country }
+let maxRid = 0, curRid = 0;
+
+let appMode = 'province';             // 'province' | 'country' | 'region' | 'edit'
+let lastPaintMode = 'province';       // dernier sous-mode peinture actif (pour le bouton Peinture)
+let ctool = 'assign';                // outil du mode pays
+let rtool = 'assign';                // outil du mode région
+let panMode = false;                 // "main" active, tous modes
+let cDirty = true, rDirty = true;
+
+/* --- infos / édition --- */
+const TERRAINS = ['(non défini)','plaine','collines','forêt','montagne','désert','marais','toundra','lac / eau'];
+const TERRAIN_COL = [                          // couleur d'affichage par terrain (null = non défini)
+  null, [124,176,92], [190,168,108], [56,118,64], [138,128,124],
+  [222,200,138], [92,150,148], [176,192,200], [88,140,204]
+];
+const provTerrain = new Uint8Array(MAXID+1);   // index dans TERRAINS, 0 = non défini
+let etarget = 'province';             // quoi on édite : 'province' | 'country' | 'region'
+let eterr = 1;                        // terrain actif du stylo (mode Édition > Province)
+let editSel = null;                   // { kind, id } sélection en cours d'édition
+
+const cam = { x: 0, y: 0, zoom: 1 };  // x,y = coord buffer au coin haut-gauche ; zoom = px écran / px buffer
+let tool = 'brush';
+let brushPx = 14;                     // taille en px écran
+let usePressure = true;
+let overwrite = false;
+let showEdges = false;               // aide visuelle uniquement, OFF par défaut (couleurs pures)
+let allowFinger = true;
+let autoSaveOn = true;
+
+/* --- calques de fond (jusqu'à BG_MAX) --- */
+const BG_MAX = 3;
+let bgLayers = [];   // [{id,name,blob,w,h,d32,x,y,ww,wh,opacity,visible}], index 0 = calque du dessus
+let bgDirtyForSave = false;
+let transformLayerId = null;   // id du calque en cours de déplacement/redimensionnement sur le canevas, ou null
+
+/* --- projet courant (accueil multi-projets) --- */
+let curProjectId = null;              // id du projet ouvert dans l'éditeur, null = sur l'accueil
+let curProjectName = '';
+
+/* réalloue le monde (ids) à une nouvelle taille — vide tout ; utilisé à l'ouverture/création d'un projet */
+function allocateWorld(w,h){
+  W = w; H = h; NPX = W*H;
+  ids = new Uint16Array(NPX);
+}
+/* agrandit le monde courant (jamais rétrécit) ; le contenu déjà peint garde sa position
+   en haut à gauche, la zone ajoutée est vide. Les calques de fond ont leur propre x/y/ww/wh
+   indépendants de W/H, donc ils ne bougent ni ne s'étirent quand le monde grandit. */
+function enlargeWorld(newW, newH){
+  newW = Math.max(W, Math.min(MAX_SIDE, newW|0));
+  newH = Math.max(H, Math.min(MAX_SIDE, newH|0));
+  if(newW===W && newH===H) return false;
+  if(newW*newH > MAX_PIXELS){ toast('Trop grand pour la mémoire disponible'); return false; }
+  const oldW=W, oldH=H, oldIds=ids;
+  const next = new Uint16Array(newW*newH);
+  for(let y=0; y<oldH; y++) next.set(oldIds.subarray(y*oldW, y*oldW+oldW), y*newW);
+  W = newW; H = newH; NPX = W*H; ids = next;
+  undoStack.length = 0; redoStack.length = 0;   // les indices pixel de l'historique référençaient l'ancienne largeur
+  refreshUndoButtons();
+  markDirty(); clampCam(); needRaster();
+  toast('Zone de travail agrandie à ' + newW + '×' + newH);
+  return true;
+}
+
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d', { alpha:false });
+const stage = document.getElementById('stage');
+let cssW = 1, cssH = 1;
+let roStarted = false;                // ResizeObserver démarré au 1er passage en éditeur (lazy)
+
+/* offscreen "snapshot" pour un pan/zoom fluide */
+const snap = document.createElement('canvas');
+const snapCtx = snap.getContext('2d', { alpha:false });
+let snapCam = { x:0, y:0, zoom:1 };
+let rasterImg = null, rasterB32 = null;
+
+/* ============================ util ============================ */
+const $ = s => document.querySelector(s);
+function toast(msg, ms=1600){
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast._t); toast._t = setTimeout(()=>t.classList.remove('show'), ms);
+}
+function hsl2rgb(h,s,l){
+  h/=360; let r,g,b;
+  if(s===0){ r=g=b=l; }
+  else{
+    const q = l<0.5 ? l*(1+s) : l+s-l*s, p = 2*l-q;
+    const hk = t=>{ t=(t%1+1)%1;
+      if(t<1/6) return p+(q-p)*6*t;
+      if(t<1/2) return q;
+      if(t<2/3) return p+(q-p)*(2/3-t)*6;
+      return p; };
+    r=hk(h+1/3); g=hk(h); b=hk(h-1/3);
+  }
+  return [Math.round(r*255), Math.round(g*255), Math.round(b*255)];
+}
+function provColor(id){
+  // angle d'or -> teintes bien réparties ; variation légère de L/S
+  const hue = (id*137.508) % 360;
+  const l = 0.46 + ((id*0.191)%1)*0.20;
+  const s = 0.50 + ((id*0.311)%1)*0.28;
+  return hsl2rgb(hue, s, l);
+}
+function assignColor(id){
+  const c = provColor(id);
+  palR[id]=c[0]; palG[id]=c[1]; palB[id]=c[2];
+}
+function setCurId(id){
+  curId = id;
+  const sw = $('#swatch');
+  if(id>0){ sw.style.background = `rgb(${palR[id]},${palG[id]},${palB[id]})`; $('#pid').textContent = 'P'+id; }
+  else { sw.style.background = 'transparent'; $('#pid').textContent = 'P—'; }
+}
+/* retire les provinces sans aucun pixel (clics « Nouvelle » en trop) et renumérote 1..N */
+function compactProvinces(){
+  const seen = new Uint8Array(maxId+1);
+  const present = [];
+  for(let i=0;i<NPX;i++){ const v = ids[i]; if(v && !seen[v]){ seen[v]=1; present.push(v); } }
+  present.sort((a,b)=>a-b);
+  const removed = maxId - present.length;
+  if(removed <= 0){ toast('Aucune province vide'); return; }
+  if(!confirm(removed + ' province(s) jamais dessinée(s) vont être supprimées et les '
+    + present.length + ' autres renumérotées de 1 à ' + present.length
+    + '.\nL\'historique Annuler sera vidé. Continuer ?')) return;
+  const remap = new Uint16Array(maxId+1);
+  present.forEach((old,i)=>{ remap[old] = i+1; });
+  for(let i=0;i<NPX;i++){ const v = ids[i]; if(v) ids[i] = remap[v]; }
+  const nR=new Uint8Array(MAXID+1), nG=new Uint8Array(MAXID+1), nB=new Uint8Array(MAXID+1);
+  const nCty=new Uint16Array(MAXID+1), nReg=new Uint16Array(MAXID+1), nTer=new Uint8Array(MAXID+1);
+  present.forEach((old,i)=>{ const ni=i+1;
+    nR[ni]=palR[old]; nG[ni]=palG[old]; nB[ni]=palB[old];
+    nCty[ni]=provCountry[old]; nReg[ni]=provRegion[old]; nTer[ni]=provTerrain[old];
+  });
+  palR.set(nR); palG.set(nG); palB.set(nB);
+  provCountry.set(nCty); provRegion.set(nReg); provTerrain.set(nTer);
+  const newCur = remap[curId] || present.length;
+  maxId = present.length;
+  topProvEmpty = false;
+  undoStack.length=0; redoStack.length=0; refreshUndoButtons();
+  setCurId(newCur);
+  provDirty = true; markDirty(); markDirtyC(); markDirtyR();
+  editSel = null; renderEditPanel(); needRaster();
+  toast(removed + ' province(s) vide(s) supprimée(s)');
+}
+function newProvince(){
+  // si la dernière province créée n'a encore rien de dessiné, on la réutilise
+  // (évite d'accumuler des provinces vides quand on clique « Nouvelle » 2 fois)
+  if(topProvEmpty && maxId>0){ setCurId(maxId); toast('Province P'+maxId+' (encore vide)'); return; }
+  if(maxId>=MAXID){ toast('Limite de provinces atteinte'); return; }
+  maxId++; assignColor(maxId); setCurId(maxId);
+  topProvEmpty = true;
+  markDirty();
+}
+
+/* --- pays --- */
+function countryColor(cid){
+  const hue = (cid*61.803 + 27) % 360;
+  const l = 0.44 + ((cid*0.137)%1)*0.16;
+  return hsl2rgb(hue, 0.58, l);
+}
+function newCountry(){
+  if(maxCid>=CMAX){ toast('Limite de pays atteinte'); return; }
+  maxCid++;
+  const c = countryColor(maxCid);
+  cpalR[maxCid]=c[0]; cpalG[maxCid]=c[1]; cpalB[maxCid]=c[2];
+  countries[maxCid] = { name:'', tag:'', tagAuto:true };
+  rebuildCountrySelect();
+  setCurCountry(maxCid);
+  markDirtyC();
+}
+function setCurCountry(cid){
+  curCid = cid;
+  const sw = $('#cswatch'), nm = $('#cname');
+  if(cid>0 && countries[cid]){
+    sw.style.background = `rgb(${cpalR[cid]},${cpalG[cid]},${cpalB[cid]})`;
+    nm.value = countries[cid].name || ''; nm.disabled = false;
+    const sel = $('#csel'); if(sel.value !== String(cid)) sel.value = String(cid);
+  } else {
+    sw.style.background = 'transparent'; nm.value = ''; nm.disabled = true;
+  }
+}
+function rebuildCountrySelect(){
+  const sel = $('#csel');
+  sel.innerHTML = '';
+  for(let cid=1; cid<=maxCid; cid++){
+    if(!countries[cid]) continue;
+    const o = document.createElement('option');
+    o.value = String(cid);
+    o.textContent = '#'+cid + (countries[cid].name ? ' '+countries[cid].name : '');
+    sel.appendChild(o);
+  }
+  if(curCid>0) sel.value = String(curCid);
+}
+function markDirtyC(){ cDirty = true; scheduleSave(); scheduleCount(); }
+/* code pays auto : 3 lettres du nom (sans accents), tant que l'utilisateur ne l'a pas
+   personnalisé (tagAuto). Ex. « France » -> « FRA », « États-Unis » -> « ETA ». */
+function deriveTag(name){
+  return String(name||'').normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .replace(/[^A-Za-z]/g,'').toUpperCase().slice(0,3);
+}
+/* change le nom d'un pays et met à jour le code auto + la liste déroulante ; renvoie true si le code a bougé */
+function setCountryName(cid, name){
+  const c = countries[cid]; if(!c) return false;
+  c.name = name;
+  let tagChanged = false;
+  if(c.tagAuto){
+    const t = deriveTag(name);
+    if(t !== c.tag){ c.tag = t; tagChanged = true; }
+  }
+  const opt = $('#csel').querySelector('option[value="'+cid+'"]');
+  if(opt) opt.textContent = '#'+cid + (name ? ' '+name : '');
+  return tagChanged;
+}
+
+/* --- régions --- */
+function regionColor(rid){
+  const hue = (rid*137.508 + 90) % 360;
+  const l = 0.50 + ((rid*0.223)%1)*0.18;
+  const s = 0.42 + ((rid*0.181)%1)*0.30;
+  return hsl2rgb(hue, s, l);
+}
+function newRegion(){
+  if(maxRid>=RMAX){ toast('Limite de régions atteinte'); return; }
+  maxRid++;
+  const c = regionColor(maxRid);
+  rpalR[maxRid]=c[0]; rpalG[maxRid]=c[1]; rpalB[maxRid]=c[2];
+  regions[maxRid] = { name:'', country: 0, pop:0, notes:'' };   // pays déduit des provinces peintes
+  rebuildRegionSelect();
+  setCurRegion(maxRid);
+  markDirtyR();
+}
+function rebuildRegionSelect(){
+  const sel = $('#rsel');
+  sel.innerHTML = '';
+  for(let rid=1; rid<=maxRid; rid++){
+    const r = regions[rid];
+    if(!r) continue;
+    const o = document.createElement('option');
+    o.value = String(rid);
+    o.textContent = '#'+rid + (r.name ? ' '+r.name : '');
+    sel.appendChild(o);
+  }
+  if(curRid>0 && regions[curRid]) sel.value = String(curRid);
+}
+function setCurRegion(rid){
+  curRid = rid;
+  const sw = $('#rswatch'), nm = $('#rname');
+  if(rid>0 && regions[rid]){
+    sw.style.background = `rgb(${rpalR[rid]},${rpalG[rid]},${rpalB[rid]})`;
+    nm.value = regions[rid].name || ''; nm.disabled = false;
+    const sel = $('#rsel'); if(sel.value !== String(rid)) sel.value = String(rid);
+  } else {
+    sw.style.background = 'transparent'; nm.value = ''; nm.disabled = true;
+  }
+}
+function markDirtyR(){ rDirty = true; scheduleSave(); scheduleCount(); }
+
+/* ============================ camera / coords ============================ */
+function clampCam(){
+  cam.zoom = Math.max(fitZoom()*0.85, Math.min(cam.zoom, 48));
+  const viewW = cssW/cam.zoom, viewH = cssH/cam.zoom;
+  const mx = Math.min(W*0.9, viewW*0.9), my = Math.min(H*0.9, viewH*0.9);
+  cam.x = Math.max(-mx, Math.min(cam.x, W - viewW + mx));
+  cam.y = Math.max(-my, Math.min(cam.y, H - viewH + my));
+}
+function fitZoom(){ return Math.min(cssW/W, cssH/H); }
+function fitView(){
+  cam.zoom = fitZoom();
+  cam.x = (W - cssW/cam.zoom)/2;
+  cam.y = (H - cssH/cam.zoom)/2;
+  needRaster();
+}
+function screenToBuf(px,py){
+  const r = cv.getBoundingClientRect();
+  return { x: cam.x + (px - r.left)/cam.zoom, y: cam.y + (py - r.top)/cam.zoom };
+}
+function zoomAt(px,py,factor){
+  const b = screenToBuf(px,py);
+  cam.zoom *= factor;
+  clampCam();
+  const r = cv.getBoundingClientRect();
+  cam.x = b.x - (px - r.left)/cam.zoom;
+  cam.y = b.y - (py - r.top)/cam.zoom;
+  clampCam();
+  needRaster();
+}
+
+/* ============================ rendu ============================ */
+let rasterPending = false, previewPending = false;
+function needRaster(){ rasterPending = true; schedule(); }
+function needPreview(){ previewPending = true; schedule(); }
+let rafId = 0;
+function schedule(){ if(!rafId) rafId = requestAnimationFrame(frame); }
+function frame(){
+  rafId = 0;
+  if(rasterPending){
+    rasterPending=false; previewPending=false;
+    // pendant un tracé province : ne recalcule que la zone modifiée (bien plus léger sur tablette)
+    if(drawId!==null && appMode==='province' && dbx1>=0) rasterZone(dbx0,dby0,dbx1,dby1);
+    else raster();
+  }
+  else if(previewPending){ previewPending=false; preview(); }
+}
+
+function resize(){
+  cssW = stage.clientWidth; cssH = stage.clientHeight;
+  // rendu à la résolution exacte de l'écran -> aucun redimensionnement du canvas -> zéro anticrénelage
+  const dpr = Math.min(window.devicePixelRatio||1, 2);
+  let iw = Math.max(1, Math.round(cssW*dpr)), ih = Math.max(1, Math.round(cssH*dpr));
+  const s = Math.min(1, MAX_CANVAS_SIDE/iw, MAX_CANVAS_SIDE/ih);
+  if(s < 1){ iw = Math.round(iw*s); ih = Math.round(ih*s); }
+  cv.width = iw; cv.height = ih;
+  snap.width = iw; snap.height = ih;
+  ctx.imageSmoothingEnabled = false;
+  snapCtx.imageSmoothingEnabled = false;
+  rasterImg = ctx.createImageData(iw, ih);
+  rasterB32 = new Uint32Array(rasterImg.data.buffer);
+  clampCam(); needRaster();
+}
+
+function rasterCore(sx0,sy0,sx1,sy1){
+  const iw = cv.width, ih = cv.height;
+  const b32 = rasterB32;
+  const ssx = iw/cssW, ssy = ih/cssH;
+  const invx = 1/(cam.zoom*ssx), invy = 1/(cam.zoom*ssy);
+  const ox = cam.x, oy = cam.y;
+  const OUT = 0xff0a0908;
+  const EMPTY = 0xff130f0e;           // ABGR : #0e0f13
+  const edges = showEdges && cam.zoom >= 2.5;
+  const er = (EMPTY & 255), eg = (EMPTY>>>8 & 255), eb = (EMPTY>>>16 & 255);
+  // calques de fond visibles, du dessous vers le dessus (ordre de composition) ;
+  // chaque calque a sa propre position/taille (x,y,ww,wh) dans le monde, indépendante
+  // de W/H courants — agrandir la zone de travail ne bouge ni n'étire aucun calque.
+  const bgActive = [];
+  for(let li=bgLayers.length-1; li>=0; li--){
+    const l = bgLayers[li];
+    if(!l.visible || l.ww<=0 || l.wh<=0) continue;
+    bgActive.push({ d:l.d32, bw:l.w, x:l.x, y:l.y, ww:l.ww, wh:l.wh, sx:l.w/l.ww, sy:l.h/l.wh, op:l.opacity });
+  }
+  const nBg = bgActive.length;
+  const countryView = appMode === 'country';
+  const regionView = appMode === 'region';
+  const editView = appMode === 'edit';
+  const et = etarget;
+  const selKind = editSel ? editSel.kind : '';
+  const selId = editSel ? editSel.id : 0;
+
+  for(let iy=sy0; iy<sy1; iy++){
+    const by = (oy + iy*invy) | 0;
+    const inY = by>=0 && by<H;
+    const rowB = by*W;
+    let o = iy*iw + sx0;
+    for(let ix=sx0; ix<sx1; ix++, o++){
+      const bx = (ox + ix*invx) | 0;
+      if(!inY || bx<0 || bx>=W){ b32[o] = OUT; continue; }
+      const p = rowB + bx;
+      const id = ids[p];
+      if(id === 0){
+        if(nBg===0){ b32[o] = EMPTY; continue; }
+        let r=er, g=eg, bl=eb;
+        for(let li=0; li<nBg; li++){
+          const L = bgActive[li];
+          if(bx<L.x || bx>=L.x+L.ww || by<L.y || by>=L.y+L.wh) continue;
+          const c = L.d[(((by-L.y)*L.sy)|0)*L.bw + (((bx-L.x)*L.sx)|0)];
+          const a = (c>>>24) / 255;                 // alpha du pixel (PNG transparent)
+          if(a <= 0) continue;
+          const cop = a * L.op, ciop = 1 - cop;
+          r = ((c&255)*cop + r*ciop)|0;
+          g = ((c>>>8&255)*cop + g*ciop)|0;
+          bl = ((c>>>16&255)*cop + bl*ciop)|0;
+        }
+        b32[o] = 0xff000000 | (bl<<16) | (g<<8) | r;
+        continue;
+      }
+      if(countryView){
+        const cid = provCountry[id];
+        if(cid){
+          b32[o] = 0xff000000 | (cpalB[cid]<<16) | (cpalG[cid]<<8) | cpalR[cid];
+        } else {
+          b32[o] = 0xff000000 | (((palB[id]*0.32)|0)<<16) | (((palG[id]*0.32)|0)<<8) | ((palR[id]*0.32)|0);
+        }
+        continue;
+      }
+      if(regionView){
+        const rid = provRegion[id];
+        if(rid && regions[rid]){
+          b32[o] = 0xff000000 | (rpalB[rid]<<16) | (rpalG[rid]<<8) | rpalR[rid];
+        } else {
+          b32[o] = 0xff000000 | (((palB[id]*0.32)|0)<<16) | (((palG[id]*0.32)|0)<<8) | ((palR[id]*0.32)|0);
+        }
+        continue;
+      }
+      if(editView){
+        let cr, cg, cb;
+        if(et==='country'){
+          const cc = provCountry[id];
+          if(cc){ cr=cpalR[cc]; cg=cpalG[cc]; cb=cpalB[cc]; }
+          else { cr=(palR[id]*0.28)|0; cg=(palG[id]*0.28)|0; cb=(palB[id]*0.28)|0; }
+        } else if(et==='region'){
+          const rr = provRegion[id];
+          if(rr && regions[rr]){ cr=rpalR[rr]; cg=rpalG[rr]; cb=rpalB[rr]; }
+          else { cr=(palR[id]*0.28)|0; cg=(palG[id]*0.28)|0; cb=(palB[id]*0.28)|0; }
+        } else {
+          const tc = TERRAIN_COL[provTerrain[id]];
+          if(tc){ cr=tc[0]; cg=tc[1]; cb=tc[2]; }
+          else { cr=(palR[id]*0.4)|0; cg=(palG[id]*0.4)|0; cb=(palB[id]*0.4)|0; }
+        }
+        let sel = false;
+        if(selKind==='province') sel = (id===selId);
+        else if(selKind==='country') sel = (selId!==0 && provCountry[id]===selId);
+        else if(selKind==='region') sel = (selId!==0 && provRegion[id]===selId);
+        if(sel){ cr=((cr+140)/1.55)|0; cg=((cg+140)/1.55)|0; cb=((cb+140)/1.55)|0; }
+        b32[o] = 0xff000000 | (cb<<16) | (cg<<8) | cr;
+        continue;
+      }
+      let r = palR[id], g = palG[id], bl = palB[id];
+      if(edges && ((bx+1<W && ids[p+1]!==id) || (by+1<H && ids[p+W]!==id))){
+        r = (r*0.62)|0; g = (g*0.62)|0; bl = (bl*0.62)|0;
+      }
+      b32[o] = 0xff000000 | (bl<<16) | (g<<8) | r;
+    }
+  }
+}
+
+/* ============================ transformation d'un calque de fond ============================ */
+let xformDrag = null;   // { pointerId, kind:'move'|'resize', corner, startWX,startWY, orig:{x,y,ww,wh}, ratio }
+function setTransformLayer(id){
+  transformLayerId = id;
+  const bar = $('#xformbar');
+  if(id){
+    const l = findBgLayer(id);
+    $('#xformname').textContent = 'Fond : ' + (l ? l.name : '');
+    bar.hidden = false;
+  } else {
+    bar.hidden = true;
+  }
+  needRaster();
+}
+function drawTransformOverlay(){
+  if(!transformLayerId) return;
+  const l = findBgLayer(transformLayerId);
+  if(!l) return;
+  const ssx = cv.width/cssW, ssy = cv.height/cssH;
+  const sx0 = (l.x-cam.x)*cam.zoom*ssx, sy0 = (l.y-cam.y)*cam.zoom*ssy;
+  const sx1 = (l.x+l.ww-cam.x)*cam.zoom*ssx, sy1 = (l.y+l.wh-cam.y)*cam.zoom*ssy;
+  ctx.save();
+  ctx.strokeStyle = '#4c8dff'; ctx.lineWidth = 2;
+  ctx.strokeRect(sx0, sy0, sx1-sx0, sy1-sy0);
+  ctx.fillStyle = '#4c8dff';
+  const hs = 12;
+  for(const [cx,cy] of [[sx0,sy0],[sx1,sy0],[sx0,sy1],[sx1,sy1]]) ctx.fillRect(cx-hs/2, cy-hs/2, hs, hs);
+  ctx.restore();
+}
+function bufToScreenPx(wx,wy){   // px CSS (comparable à clientX/Y), pour le hit-test pointeur
+  const r = cv.getBoundingClientRect();
+  return { x: r.left + (wx-cam.x)*cam.zoom, y: r.top + (wy-cam.y)*cam.zoom };
+}
+function hitTestTransform(px,py){
+  const l = findBgLayer(transformLayerId);
+  if(!l) return null;
+  const p0 = bufToScreenPx(l.x, l.y), p1 = bufToScreenPx(l.x+l.ww, l.y+l.wh);
+  const HH = 16;
+  const corners = { tl:p0, tr:{x:p1.x,y:p0.y}, bl:{x:p0.x,y:p1.y}, br:p1 };
+  for(const k in corners){
+    const c = corners[k];
+    if(Math.abs(px-c.x)<=HH && Math.abs(py-c.y)<=HH) return { kind:'resize', corner:k };
+  }
+  if(px>=p0.x && px<=p1.x && py>=p0.y && py<=p1.y) return { kind:'move' };
+  return null;
+}
+function beginXform(hit, px, py, pointerId){
+  const l = findBgLayer(transformLayerId);
+  if(!l) return;
+  const r = cv.getBoundingClientRect();
+  xformDrag = {
+    pointerId, kind:hit.kind, corner:hit.corner,
+    startWX: cam.x + (px - r.left)/cam.zoom, startWY: cam.y + (py - r.top)/cam.zoom,
+    orig: { x:l.x, y:l.y, ww:l.ww, wh:l.wh }, ratio: l.ww/l.wh
+  };
+}
+function updateXform(px,py){
+  const l = findBgLayer(transformLayerId);
+  if(!l || !xformDrag) return;
+  const r = cv.getBoundingClientRect();
+  const wx = cam.x + (px - r.left)/cam.zoom, wy = cam.y + (py - r.top)/cam.zoom;
+  const o = xformDrag.orig;
+  if(xformDrag.kind==='move'){
+    l.x = o.x + (wx - xformDrag.startWX);
+    l.y = o.y + (wy - xformDrag.startWY);
+    needRaster();
+    return;
+  }
+  // redimensionnement : ancré au coin opposé à celui qu'on tire, ratio d'origine préservé
+  let ax, ay;
+  if(xformDrag.corner==='tl'){ ax=o.x+o.ww; ay=o.y+o.wh; }
+  else if(xformDrag.corner==='tr'){ ax=o.x; ay=o.y+o.wh; }
+  else if(xformDrag.corner==='bl'){ ax=o.x+o.ww; ay=o.y; }
+  else { ax=o.x; ay=o.y; }
+  const dw = Math.abs(wx-ax), dh = Math.abs(wy-ay);
+  let newW = (dw/o.ww >= dh/o.wh) ? dw : dh*xformDrag.ratio;
+  newW = Math.max(8, newW);
+  const newH = newW/xformDrag.ratio;
+  l.x = (xformDrag.corner==='tl'||xformDrag.corner==='bl') ? ax-newW : ax;
+  l.y = (xformDrag.corner==='tl'||xformDrag.corner==='tr') ? ay-newH : ay;
+  l.ww = newW; l.wh = newH;
+  needRaster();
+}
+$('#xform-done').addEventListener('click', ()=>setTransformLayer(null));
+
+function raster(){
+  rasterCore(0, 0, cv.width, cv.height);
+  ctx.putImageData(rasterImg, 0, 0);
+  if(drawId === null){                       // maj de la copie pan/zoom seulement hors tracé
+    snapCtx.putImageData(rasterImg, 0, 0);
+    snapCam.x = cam.x; snapCam.y = cam.y; snapCam.zoom = cam.zoom;
+  }
+  drawTransformOverlay();
+  updateStats();
+}
+
+function rasterZone(bx0,by0,bx1,by1){
+  const iw = cv.width, ih = cv.height;
+  const ssx = iw/cssW, ssy = ih/cssH;
+  let sx0 = Math.floor((bx0   - cam.x)*cam.zoom*ssx) - 2;
+  let sx1 = Math.ceil ((bx1+1 - cam.x)*cam.zoom*ssx) + 2;
+  let sy0 = Math.floor((by0   - cam.y)*cam.zoom*ssy) - 2;
+  let sy1 = Math.ceil ((by1+1 - cam.y)*cam.zoom*ssy) + 2;
+  sx0 = Math.max(0, Math.min(iw, sx0)); sx1 = Math.max(0, Math.min(iw, sx1));
+  sy0 = Math.max(0, Math.min(ih, sy0)); sy1 = Math.max(0, Math.min(ih, sy1));
+  if(sx1<=sx0 || sy1<=sy0){ return; }
+  rasterCore(sx0, sy0, sx1, sy1);
+  ctx.putImageData(rasterImg, 0, 0, sx0, sy0, sx1-sx0, sy1-sy0);
+  drawTransformOverlay();
+}
+
+function preview(){
+  // transforme le dernier raster pour un pan/zoom fluide, sans recalcul
+  const iw = cv.width, ih = cv.height;
+  const ssx = iw/cssW;
+  const sc = cam.zoom/snapCam.zoom;
+  const dx = (snapCam.x - cam.x) * cam.zoom * ssx;
+  const dy = (snapCam.y - cam.y) * cam.zoom * (ih/cssH);
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.fillStyle = '#0a0908'; ctx.fillRect(0,0,iw,ih);
+  ctx.imageSmoothingEnabled = false;
+  ctx.setTransform(sc,0,0,sc,dx,dy);
+  ctx.drawImage(snap, 0, 0);
+  ctx.setTransform(1,0,0,1,0,0);
+  drawTransformOverlay();
+  updateStats();
+}
+
+function updateStats(){
+  $('#zoomstat').textContent = (cam.zoom/fitZoom()).toFixed(1) + '×';
+}
+let provDirty = true;
+let countTimer = 0;
+function scheduleCount(){
+  clearTimeout(countTimer);
+  countTimer = setTimeout(()=>{
+    const tot = countProv();
+    $('#pcount').textContent = tot + ' prov.';
+    let asg = 0, rasg = 0;
+    for(let id=1; id<=maxId; id++){ if(provCountry[id]) asg++; if(provRegion[id]) rasg++; }
+    $('#ccount').textContent = asg + '/' + tot;
+    $('#rcount').textContent = rasg + '/' + tot;
+  }, 450);
+}
+function markDirty(){ provDirty = true; scheduleSave(); scheduleCount(); }
+function countProv(){
+  if(!provDirty) return liveProv;
+  const seen = new Uint8Array(maxId+1);
+  let n = 0;
+  for(let i=0;i<NPX;i++){ const v = ids[i]; if(v && !seen[v]){ seen[v]=1; n++; } }
+  liveProv = n; provDirty = false;
+  return n;
+}
+
+/* ============================ undo / redo ============================ */
+const undoStack = [], redoStack = [];
+let curOp = null; // { map:Map<idx,old> }
+function opBegin(){ curOp = { map:new Map() }; }
+function opRecord(p, old){ const m = curOp.map; if(!m.has(p)) m.set(p, old); }
+function opCommit(){
+  if(!curOp || curOp.map.size===0){ curOp=null; return; }
+  if(curOp.map.size > 3_000_000){ curOp=null; toast('Trop gros pour l\'annulation'); return; }
+  const n = curOp.map.size;
+  const idx = new Uint32Array(n), val = new Uint16Array(n);
+  let k=0; for(const [p,old] of curOp.map){ idx[k]=p; val[k]=old; k++; }
+  undoStack.push({ idx, val });
+  if(undoStack.length > UNDO_MAX) undoStack.shift();
+  redoStack.length = 0;
+  curOp = null;
+  refreshUndoButtons();
+}
+/* --- op "pays" (assignation province -> pays) --- */
+let curOpC = null;
+function opBeginC(){ curOpC = new Map(); }
+function opRecordC(pid, old){ if(!curOpC.has(pid)) curOpC.set(pid, old); }
+function opCommitC(){
+  if(!curOpC || curOpC.size===0){ curOpC=null; return; }
+  const n = curOpC.size;
+  const idx = new Uint32Array(n), val = new Uint16Array(n);
+  let k=0; for(const [p,o] of curOpC){ idx[k]=p; val[k]=o; k++; }
+  undoStack.push({ kind:'country', idx, val });
+  if(undoStack.length > UNDO_MAX) undoStack.shift();
+  redoStack.length = 0;
+  curOpC = null;
+  refreshUndoButtons();
+}
+/* --- op "région" (province -> région, + pays hérité, + fusion) --- */
+let curOpR = null;
+function opBeginR(){ curOpR = { reg:new Map(), del:null }; }
+function opRecordR(pid, oldReg, oldCty){ if(!curOpR.reg.has(pid)) curOpR.reg.set(pid, [oldReg, oldCty]); }
+function opCommitR(){
+  if(!curOpR || (curOpR.reg.size===0 && !curOpR.del)){ curOpR=null; return; }
+  const n = curOpR.reg.size;
+  const idx = new Uint32Array(n), vreg = new Uint16Array(n), vcty = new Uint16Array(n);
+  let k=0; for(const [p,rc] of curOpR.reg){ idx[k]=p; vreg[k]=rc[0]; vcty[k]=rc[1]; k++; }
+  undoStack.push({ kind:'region', idx, vreg, vcty, del:curOpR.del });
+  if(undoStack.length > UNDO_MAX) undoStack.shift();
+  redoStack.length = 0;
+  curOpR = null;
+  refreshUndoButtons();
+}
+/* --- op "terrain" (province -> index terrain, mode Édition > Province) --- */
+let curOpT = null;
+function opBeginT(){ curOpT = new Map(); }
+function opRecordT(pid, old){ if(!curOpT.has(pid)) curOpT.set(pid, old); }
+function opCommitT(){
+  if(!curOpT || curOpT.size===0){ curOpT=null; return; }
+  const n = curOpT.size;
+  const idx = new Uint32Array(n), val = new Uint16Array(n);
+  let k=0; for(const [p,o] of curOpT){ idx[k]=p; val[k]=o; k++; }
+  undoStack.push({ kind:'terrain', idx, val });
+  if(undoStack.length > UNDO_MAX) undoStack.shift();
+  redoStack.length = 0;
+  curOpT = null;
+  refreshUndoButtons();
+}
+function applySnapshot(s){
+  if(s.kind==='region'){
+    const idx = s.idx;
+    const inv = { kind:'region', idx, vreg:new Uint16Array(idx.length), vcty:new Uint16Array(idx.length), del:s.del };
+    for(let i=0;i<idx.length;i++){
+      const p = idx[i];
+      inv.vreg[i] = provRegion[p]; inv.vcty[i] = provCountry[p];
+      provRegion[p] = s.vreg[i];   provCountry[p] = s.vcty[i];
+    }
+    if(s.del){
+      const rid = s.del.rid;
+      if(regions[rid]){ regions[rid] = null; }
+      else {
+        regions[rid] = s.del.obj;
+        rpalR[rid]=s.del.col[0]; rpalG[rid]=s.del.col[1]; rpalB[rid]=s.del.col[2];
+        if(maxRid < rid) maxRid = rid;
+      }
+      rebuildRegionSelect();
+    }
+    return inv;
+  }
+  const target = s.kind==='country' ? provCountry : s.kind==='terrain' ? provTerrain : ids;
+  const idx = s.idx, val = s.val;
+  const inv = { kind:s.kind, idx, val:new Uint16Array(idx.length) };
+  for(let i=0;i<idx.length;i++){ const p=idx[i]; inv.val[i]=target[p]; target[p]=val[i]; }
+  return inv;
+}
+function markDirtyFor(kind){
+  if(kind==='region') markDirtyR();
+  else if(kind==='country') markDirtyC();
+  else markDirty();
+}
+function undo(){
+  const s = undoStack.pop(); if(!s){ return; }
+  redoStack.push(applySnapshot(s));
+  markDirtyFor(s.kind);
+  needRaster(); refreshUndoButtons();
+}
+function redo(){
+  const s = redoStack.pop(); if(!s){ return; }
+  undoStack.push(applySnapshot(s));
+  markDirtyFor(s.kind);
+  needRaster(); refreshUndoButtons();
+}
+function refreshUndoButtons(){
+  $('#t-undo').toggleAttribute('disabled', undoStack.length===0);
+  $('#t-redo').toggleAttribute('disabled', redoStack.length===0);
+}
+
+/* ============================ peinture ============================ */
+let dbx0,dby0,dbx1,dby1;             // bbox modifiée de l'op courante
+function dirtyReset(){ dbx0=W; dby0=H; dbx1=-1; dby1=-1; }
+function dirtyExpand(x0,y0,x1,y1){
+  if(x0<dbx0)dbx0=x0; if(y0<dby0)dby0=y0; if(x1>dbx1)dbx1=x1; if(y1>dby1)dby1=y1;
+}
+
+function stamp(cx,cy,r,id,mode){
+  // mode: 'behind' (vide ou soi-même), 'over' (tout), 'erase' (efface)
+  const rr = Math.max(0.5, r), r2 = rr*rr;
+  let x0 = Math.max(0, Math.floor(cx-rr)), x1 = Math.min(W-1, Math.ceil(cx+rr));
+  let y0 = Math.max(0, Math.floor(cy-rr)), y1 = Math.min(H-1, Math.ceil(cy+rr));
+  if(x1<x0||y1<y0) return;
+  for(let y=y0;y<=y1;y++){
+    const dy = y-cy, row = y*W;
+    for(let x=x0;x<=x1;x++){
+      const dx = x-cx; if(dx*dx+dy*dy > r2) continue;
+      const p = row+x, cur = ids[p];
+      if(mode==='erase'){ if(cur!==0){ opRecord(p,cur); ids[p]=0; } }
+      else if(mode==='over'){ if(cur!==id){ opRecord(p,cur); ids[p]=id; } }
+      else { if(cur===0){ opRecord(p,0); ids[p]=id; } }
+    }
+  }
+  dirtyExpand(x0,y0,x1,y1);
+}
+
+function strokeSeg(x0,y0,x1,y1,r,id,mode){
+  const dx = x1-x0, dy = y1-y0;
+  const dist = Math.hypot(dx,dy);
+  const step = Math.max(1, r*0.34);
+  const n = Math.max(1, Math.ceil(dist/step));
+  for(let i=0;i<=n;i++){ const t=i/n; stamp(x0+dx*t, y0+dy*t, r, id, mode); }
+}
+
+function autofillEnclosed(id){
+  if(dbx1<0) return 0;
+  const M = 40;
+  const x0 = Math.max(0,dbx0-M), y0 = Math.max(0,dby0-M);
+  const x1 = Math.min(W-1,dbx1+M), y1 = Math.min(H-1,dby1+M);
+  const bw = x1-x0+1, bh = y1-y0+1;
+  if(bw*bh > 24_000_000){ return -1; }      // zone trop vaste : on laisse le pot faire
+  const out = new Uint8Array(bw*bh);       // 1 = vide relié au bord de la zone
+  const stack = [];
+  const push = (lx,ly)=>{
+    const li = ly*bw+lx;
+    if(out[li]) return;
+    if(ids[(y0+ly)*W + (x0+lx)] !== 0) return;
+    out[li] = 1; stack.push(li);
+  };
+  for(let lx=0;lx<bw;lx++){ push(lx,0); push(lx,bh-1); }
+  for(let ly=0;ly<bh;ly++){ push(0,ly); push(bw-1,ly); }
+  while(stack.length){
+    const li = stack.pop();
+    const lx = li%bw, ly = (li/bw)|0;
+    if(lx>0)   push(lx-1,ly);
+    if(lx<bw-1)push(lx+1,ly);
+    if(ly>0)   push(lx,ly-1);
+    if(ly<bh-1)push(lx,ly+1);
+  }
+  let filled = 0;
+  for(let ly=0;ly<bh;ly++){
+    const wrow = (y0+ly)*W + x0;
+    for(let lx=0;lx<bw;lx++){
+      if(out[ly*bw+lx]) continue;
+      const p = wrow+lx;
+      if(ids[p]===0){ opRecord(p,0); ids[p]=id; filled++; }
+    }
+  }
+  if(filled) dirtyExpand(x0,y0,x1,y1);
+  return filled;
+}
+
+function bucketFill(bx,by,id){
+  bx |= 0; by |= 0;
+  if(bx<0||by<0||bx>=W||by>=H) return;
+  const start = by*W+bx;
+  if(ids[start] !== 0){ toast('Le pot ne remplit que le vide'); return; }
+  opBegin(); dirtyReset();
+  const stack = [start];
+  let x0=bx,y0=by,x1=bx,y1=by, count=0;
+  while(stack.length){
+    const p = stack.pop();
+    if(ids[p] !== 0) continue;
+    opRecord(p,0); ids[p]=id; count++;
+    if(count > 26_000_000){ toast('Zone énorme — arrêt'); break; }
+    const x = p%W, y = (p/W)|0;
+    if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y;
+    if(x>0   && ids[p-1]===0) stack.push(p-1);
+    if(x<W-1 && ids[p+1]===0) stack.push(p+1);
+    if(y>0   && ids[p-W]===0) stack.push(p-W);
+    if(y<H-1 && ids[p+W]===0) stack.push(p+W);
+  }
+  dirtyExpand(x0,y0,x1,y1);
+  opCommit();
+  if(count > 0) topProvEmpty = false;
+  markDirty(); needRaster();
+}
+
+/* ============================ entrées pointeur ============================ */
+const pointers = new Map();          // pointerId -> {x,y,type}
+let penDown = false;
+let drawId = null;                   // pointerId qui dessine
+let drawMode = 'behind';             // mode figé pour tout le tracé en cours
+let lastBuf = null;
+let panId = null, panLast = null;
+let gesture = null;                  // { d, cx, cy } pour le pincement
+let rightErase = false;              // clic droit -> gomme / retirer
+let cAssignErase = false;            // le tracé pays en cours retire au lieu d'assigner
+
+function isDrawTool(){ return tool==='brush'||tool==='erase'; }
+
+/* --- mode pays : assigner des provinces --- */
+function provAt(px,py){
+  const b = screenToBuf(px,py);
+  if(b.x<0||b.y<0||b.x>=W||b.y>=H) return 0;
+  return ids[(b.y|0)*W + (b.x|0)];
+}
+function assignAt(px,py,cid){
+  const pid = provAt(px,py);
+  if(!pid || provCountry[pid]===cid) return;
+  opRecordC(pid, provCountry[pid]);
+  provCountry[pid] = cid;
+  needRaster();
+}
+function beginCountry(px,py,pointerId,erase){
+  if(ctool==='cpick'){
+    const pid = provAt(px,py);
+    if(pid && provCountry[pid]){ setCurCountry(provCountry[pid]); rebuildCountrySelect(); toast('Pays #'+provCountry[pid]); }
+    else toast('Province sans pays');
+    return;
+  }
+  if(maxCid===0) newCountry();
+  drawId = pointerId;
+  cAssignErase = erase || $('#cerase').checked;
+  opBeginC();
+  assignAt(px,py, cAssignErase ? 0 : curCid);
+}
+function moveCountry(px,py,coalesced){
+  const pts = coalesced && coalesced.length ? coalesced : [{clientX:px,clientY:py}];
+  for(const ev of pts) assignAt(ev.clientX, ev.clientY, cAssignErase ? 0 : curCid);
+}
+function endCountry(){
+  drawId = null;
+  opCommitC();
+  markDirtyC();
+  needRaster();
+}
+
+/* --- mode région : assigner des provinces à une région (pays déduit des provinces) --- */
+let rAssignErase = false;
+function assignRegionAt(px,py,rid){
+  const pid = provAt(px,py);
+  if(!pid || provRegion[pid] === rid) return;
+  opRecordR(pid, provRegion[pid], provCountry[pid]);
+  provRegion[pid] = rid;
+  // la région adopte le pays de la province peinte (la province garde son pays)
+  if(rid !== 0 && regions[rid] && provCountry[pid]) regions[rid].country = provCountry[pid];
+  needRaster();
+}
+function mergeRegionInto(px,py){
+  const pid = provAt(px,py);
+  if(!pid) return;
+  const src = provRegion[pid];
+  if(!src || src===curRid || !regions[src]) return;
+  for(let id=1; id<=maxId; id++){
+    if(provRegion[id]===src){ opRecordR(id, src, provCountry[id]); provRegion[id]=curRid; }
+  }
+  curOpR.del = { rid:src, obj:regions[src], col:[rpalR[src],rpalG[src],rpalB[src]] };
+  regions[src] = null;
+  rebuildRegionSelect();
+  toast('Régions fusionnées');
+}
+function beginRegion(px,py,pointerId,erase){
+  if(rtool==='rpick'){
+    const pid = provAt(px,py), r = pid ? provRegion[pid] : 0;
+    if(r && regions[r]){ setCurRegion(r); toast('Région #'+r); }
+    else toast('Province sans région');
+    return;
+  }
+  if(rtool==='merge'){
+    if(curRid===0 || !regions[curRid]){ toast('Choisis d\'abord la région cible'); return; }
+    opBeginR(); mergeRegionInto(px,py); opCommitR(); markDirtyR(); needRaster();
+    return;
+  }
+  // assign
+  if(maxRid===0) newRegion();
+  drawId = pointerId;
+  rAssignErase = erase || $('#rerase').checked;
+  opBeginR();
+  assignRegionAt(px,py, rAssignErase ? 0 : curRid);
+}
+function moveRegion(px,py,coalesced){
+  if(rtool!=='assign') return;
+  const pts = coalesced && coalesced.length ? coalesced : [{clientX:px,clientY:py}];
+  for(const ev of pts) assignRegionAt(ev.clientX, ev.clientY, rAssignErase ? 0 : curRid);
+}
+function endRegion(){
+  drawId = null;
+  opCommitR();
+  markDirtyR();
+  needRaster();
+}
+
+/* --- mode édition > Province : stylo terrain (province entière au contact) --- */
+let tErase = false;
+function assignTerrainAt(px,py,terr){
+  const pid = provAt(px,py);
+  if(!pid || provTerrain[pid]===terr) return;
+  opRecordT(pid, provTerrain[pid]);
+  provTerrain[pid] = terr;
+  needRaster();
+}
+function beginTerrain(px,py,pointerId,erase){
+  drawId = pointerId;
+  tErase = erase;
+  opBeginT();
+  assignTerrainAt(px,py, erase ? 0 : eterr);
+}
+function moveTerrain(px,py,coalesced){
+  const pts = coalesced && coalesced.length ? coalesced : [{clientX:px,clientY:py}];
+  for(const ev of pts) assignTerrainAt(ev.clientX, ev.clientY, tErase ? 0 : eterr);
+}
+function endTerrain(){
+  drawId = null;
+  opCommitT();
+  markDirty();
+  needRaster();
+}
+
+/* --- mode édition : sélectionner un élément et remplir ses infos --- */
+function editPick(px,py){
+  const pid = provAt(px,py);
+  if(!pid){ toast('Clique sur une province'); return; }
+  if(etarget==='country'){
+    const cid = provCountry[pid];
+    if(!cid){ toast('Cette province n\'a pas de pays'); return; }
+    editSel = { kind:'country', id:cid };
+  } else {
+    const rid = provRegion[pid];
+    if(!rid || !regions[rid]){ toast('Cette province n\'a pas de région'); return; }
+    editSel = { kind:'region', id:rid };
+  }
+  renderEditPanel();
+  needRaster();
+}
+function provCountOf(pred){ let n=0; for(let id=1;id<=maxId;id++) if(pred(id)) n++; return n; }
+function renderEditPanel(){
+  const P = $('#editpanel');
+  if(appMode!=='edit' || etarget==='province'){ P.hidden = true; return; }   // Province = stylo terrain, pas de panneau
+  if(!editSel){ P.hidden = false; P.innerHTML = '<div class="ep-empty">Choisis Pays ou Région dans la barre, puis clique un élément sur la carte.</div>'; return; }
+  P.hidden = false;
+  const k = editSel.kind, id = editSel.id;
+  let h = '';
+  if(k==='province'){
+    const cc = provCountry[id], rr = provRegion[id];
+    h += `<h3>Province #${id}</h3>`;
+    h += `<label>Terrain<select id="ep-terrain">` +
+         TERRAINS.map((t,i)=>`<option value="${i}"${provTerrain[id]===i?' selected':''}>${t}</option>`).join('') +
+         `</select></label>`;
+    h += `<div class="ep-ro">Pays : ${cc?('#'+cc+(countries[cc].name?' '+countries[cc].name:'')):'—'}<br>`+
+         `Région : ${rr&&regions[rr]?('#'+rr+(regions[rr].name?' '+regions[rr].name:'')):'—'}</div>`;
+  } else if(k==='country'){
+    const c = countries[id] || {name:'',tag:''};
+    let rc=0; for(let rid=1;rid<=maxRid;rid++) if(regions[rid]&&regions[rid].country===id) rc++;
+    const pc = provCountOf(x=>provCountry[x]===id);
+    h += `<h3>Pays #${id}</h3>`;
+    h += `<label>Nom<input id="ep-name" value="${escAttr(c.name)}"></label>`;
+    h += `<label>Code — 3 lettres, généré d'après le nom, modifiable (vider = revenir à l'auto)`+
+         `<input id="ep-tag" maxlength="3" value="${escAttr(c.tag||'')}"></label>`;
+    h += `<div class="ep-ro">${rc} région(s) · ${pc} province(s)</div>`;
+  } else {
+    const r = regions[id];
+    if(!r){ editSel=null; return renderEditPanel(); }
+    const pc = provCountOf(x=>provRegion[x]===id);
+    h += `<h3>Région #${id}</h3>`;
+    h += `<label>Nom<input id="ep-name" value="${escAttr(r.name)}"></label>`;
+    h += `<label>Habitants<input id="ep-pop" type="number" min="0" step="1000" value="${r.pop||0}"></label>`;
+    h += `<label>Notes<textarea id="ep-notes" rows="3">${escHtml(r.notes||'')}</textarea></label>`;
+    h += `<div class="ep-ro">Pays : ${r.country?('#'+r.country+(countries[r.country]&&countries[r.country].name?' '+countries[r.country].name:'')):'—'} · ${pc} province(s)</div>`;
+  }
+  P.innerHTML = h;
+  wireEditPanel(k, id);
+}
+function escAttr(s){ return String(s==null?'':s).replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+function escHtml(s){ return String(s==null?'':s).replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function wireEditPanel(k,id){
+  const P = $('#editpanel');
+  const t = P.querySelector('#ep-terrain');
+  if(t) t.addEventListener('change', e=>{ provTerrain[id] = +e.target.value; markDirty(); });
+  const nm = P.querySelector('#ep-name');
+  if(nm) nm.addEventListener('input', e=>{
+    if(k==='country' && countries[id]){
+      if(setCountryName(id, e.target.value)){
+        const tg = P.querySelector('#ep-tag'); if(tg) tg.value = countries[id].tag;
+      }
+    }
+    if(k==='region' && regions[id]){ regions[id].name = e.target.value; rebuildRegionSelect(); }
+    scheduleSave();
+  });
+  const tag = P.querySelector('#ep-tag');
+  if(tag) tag.addEventListener('input', e=>{
+    const c = countries[id]; if(!c) return;
+    const v = e.target.value.toUpperCase();
+    if(v !== e.target.value) e.target.value = v;
+    if(v === ''){ c.tagAuto = true; c.tag = deriveTag(c.name); e.target.value = c.tag; }
+    else { c.tag = v; c.tagAuto = false; }
+    scheduleSave();
+  });
+  const pop = P.querySelector('#ep-pop');
+  if(pop) pop.addEventListener('input', e=>{ if(regions[id]){ regions[id].pop = Math.max(0, e.target.value|0); scheduleSave(); } });
+  const nt = P.querySelector('#ep-notes');
+  if(nt) nt.addEventListener('input', e=>{
+    if(k==='region' && regions[id]) regions[id].notes = e.target.value;
+    scheduleSave();
+  });
+}
+function selectETarget(t){
+  etarget = t; panMode = false;
+  document.querySelectorAll('#bar .tbtn[data-etarget]').forEach(b=>b.classList.toggle('on', b.dataset.etarget===t));
+  $('#hud').dataset.etarget = t;
+  updatePanBtn();
+  if(editSel && editSel.kind!==t) editSel = null;
+  renderEditPanel();
+  needRaster();
+}
+function setTerrain(i){
+  eterr = i;
+  document.querySelectorAll('#grp-editprov .tchip').forEach(x=>x.classList.toggle('on', +x.dataset.terr===i));
+  $('#etname').textContent = TERRAINS[i];
+}
+function buildTerrainChips(){
+  const box = $('#grp-editprov'); if(!box) return;
+  let h = '<span class="stat">Terrain</span>';
+  for(let i=0;i<TERRAINS.length;i++){
+    const c = TERRAIN_COL[i];
+    const st = c ? `--tc:rgb(${c[0]},${c[1]},${c[2]})` : '';
+    h += `<button class="tchip${c?'':' none'}${i===eterr?' on':''}" data-terr="${i}" title="${TERRAINS[i]}" style="${st}"></button>`;
+  }
+  h += '<span class="val" id="etname">'+TERRAINS[eterr]+'</span>';
+  box.innerHTML = h;
+  box.querySelectorAll('.tchip').forEach(b=>b.addEventListener('click', ()=>setTerrain(+b.dataset.terr)));
+}
+
+function beginDraw(px,py,pointerId,pressure){
+  if(appMode==='edit'){
+    if(etarget==='province'){ beginTerrain(px,py,pointerId, rightErase); return; }
+    editPick(px,py); return;
+  }
+  if(appMode==='country'){ beginCountry(px,py,pointerId, rightErase); return; }
+  if(appMode==='region'){ beginRegion(px,py,pointerId, rightErase); return; }
+  if(!isDrawTool() && tool!=='bucket' && tool!=='pick') return;
+  const b = screenToBuf(px,py);
+  if(tool==='pick'){
+    const p = (b.y|0)*W + (b.x|0);
+    if(b.x>=0&&b.y>=0&&b.x<W&&b.y<H && ids[p]){ setCurId(ids[p]); toast('Province P'+ids[p]); }
+    else toast('Rien à prélever ici');
+    return;
+  }
+  if(tool==='bucket'){
+    if(curId===0){ newProvince(); }
+    bucketFill(b.x, b.y, curId);
+    return;
+  }
+  // brush / erase
+  if(tool==='brush' && !rightErase && curId===0) newProvince();
+  drawId = pointerId;
+  drawMode = (tool==='erase' || rightErase) ? 'erase' : (overwrite ? 'over' : 'behind');
+  opBegin(); dirtyReset();
+  lastBuf = b;
+  stamp(b.x, b.y, radiusFor(pressure), curId, drawMode);
+  needRaster();
+}
+function moveDraw(px,py,pressure,coalesced){
+  const pts = coalesced && coalesced.length ? coalesced : [{clientX:px,clientY:py,pressure}];
+  for(const ev of pts){
+    const b = screenToBuf(ev.clientX, ev.clientY);
+    const rr = radiusFor(ev.pressure!=null?ev.pressure:pressure);
+    strokeSeg(lastBuf.x, lastBuf.y, b.x, b.y, rr, curId, drawMode);
+    lastBuf = b;
+  }
+  needRaster();
+}
+function endDraw(){
+  if(drawId===null) return;
+  if(appMode==='country'){ endCountry(); return; }
+  if(appMode==='region'){ endRegion(); return; }
+  if(appMode==='edit'){ endTerrain(); return; }
+  drawId = null; lastBuf = null;
+  if(drawMode==='behind'){
+    const r = autofillEnclosed(curId);
+    if(r === -1) toast('Forme trop grande pour le remplissage auto — utilise le pot');
+  }
+  const drew = curOp && curOp.map.size > 0;
+  opCommit();
+  if(drew && drawMode !== 'erase') topProvEmpty = false;   // la province active a reçu des pixels
+  markDirty();
+  needRaster();
+}
+function radiusFor(pressure){
+  const pr = (pressure && pressure>0) ? pressure : 0.5;
+  const base = brushPx/cam.zoom;
+  return Math.max(0.5, base * (usePressure ? (0.28 + 0.72*pr) : 1) * 0.5);
+}
+
+cv.addEventListener('pointerdown', e=>{
+  cv.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, {x:e.clientX, y:e.clientY, type:e.pointerType});
+  if(transformLayerId){
+    const touches = [...pointers.values()].filter(p=>p.type==='touch');
+    if(e.pointerType==='touch' && touches.length>=2){ startGesture(); return; }
+    const hit = hitTestTransform(e.clientX, e.clientY);
+    if(hit) beginXform(hit, e.clientX, e.clientY, e.pointerId);
+    return;   // mode modal : pas de dessin/pan tant qu'un fond est en transformation
+  }
+  if(e.pointerType==='pen'){
+    penDown = true;
+    // le stylet gagne : on annule un tracé au doigt en cours
+    if(drawId!==null && pointers.get(drawId) && pointers.get(drawId).type==='touch'){ endDraw(); }
+    if(panMode){ panId=e.pointerId; panLast={x:e.clientX,y:e.clientY}; return; }
+    beginDraw(e.clientX, e.clientY, e.pointerId, e.pressure);
+    return;
+  }
+  if(e.pointerType==='touch'){
+    const touches = [...pointers.values()].filter(p=>p.type==='touch');
+    if(touches.length>=2){
+      if(drawId!==null) endDraw();
+      startGesture();
+      return;
+    }
+    if(penDown) return;                       // rejet paume/doigt pendant stylet
+    if(panMode){ panId=e.pointerId; panLast={x:e.clientX,y:e.clientY}; return; }
+    if(!allowFinger){ panId=e.pointerId; panLast={x:e.clientX,y:e.clientY}; return; }
+    beginDraw(e.clientX, e.clientY, e.pointerId, e.pressure);
+    return;
+  }
+  // souris
+  if(e.button===1 || panMode){ panId=e.pointerId; panLast={x:e.clientX,y:e.clientY}; return; }
+  if(e.button===0) beginDraw(e.clientX, e.clientY, e.pointerId, 0.5);
+  else if(e.button===2){ rightErase=true; beginDraw(e.clientX,e.clientY,e.pointerId,0.5); rightErase=false; }
+});
+
+cv.addEventListener('pointermove', e=>{
+  const rec = pointers.get(e.pointerId);
+  if(rec){ rec.x=e.clientX; rec.y=e.clientY; }
+
+  if(xformDrag && xformDrag.pointerId===e.pointerId){ updateXform(e.clientX, e.clientY); return; }
+  if(gesture){ updateGesture(); return; }
+
+  if(panId===e.pointerId && panLast){
+    const dx = (e.clientX-panLast.x)/cam.zoom, dy = (e.clientY-panLast.y)/cam.zoom;
+    cam.x -= dx; cam.y -= dy; panLast={x:e.clientX,y:e.clientY};
+    clampCam(); needPreview();
+    return;
+  }
+  if(drawId===e.pointerId){
+    const co = e.getCoalescedEvents ? e.getCoalescedEvents() : null;
+    if(appMode==='country') moveCountry(e.clientX, e.clientY, co);
+    else if(appMode==='region') moveRegion(e.clientX, e.clientY, co);
+    else if(appMode==='edit') moveTerrain(e.clientX, e.clientY, co);
+    else moveDraw(e.clientX, e.clientY, e.pressure, co);
+  }
+});
+
+function up(e){
+  pointers.delete(e.pointerId);
+  if(e.pointerType==='pen') penDown = false;
+  if(xformDrag && xformDrag.pointerId===e.pointerId){ xformDrag=null; scheduleSave(); return; }
+  if(gesture){
+    const t = [...pointers.values()].filter(p=>p.type==='touch');
+    if(t.length<2){ gesture=null; needRaster(); }
+    return;
+  }
+  if(panId===e.pointerId){ panId=null; panLast=null; needRaster(); return; }
+  if(drawId===e.pointerId) endDraw();
+}
+cv.addEventListener('pointerup', up);
+cv.addEventListener('pointercancel', up);
+cv.addEventListener('pointerleave', e=>{ if(e.pointerType==='mouse' && drawId===e.pointerId) endDraw(); });
+cv.addEventListener('contextmenu', e=>e.preventDefault());
+cv.addEventListener('wheel', e=>{
+  e.preventDefault();
+  zoomAt(e.clientX, e.clientY, e.deltaY<0 ? 1.15 : 1/1.15);
+}, {passive:false});
+
+function startGesture(){
+  const t = [...pointers.values()].filter(p=>p.type==='touch');
+  if(t.length<2) return;
+  gesture = gInfo(t[0], t[1]);
+}
+function updateGesture(){
+  const t = [...pointers.values()].filter(p=>p.type==='touch');
+  if(t.length<2) return;
+  const g = gInfo(t[0], t[1]);
+  const r = cv.getBoundingClientRect();
+  // point buffer qui était sous le milieu du pincement à la frame précédente (cam actuelle)
+  const anchor = screenToBuf(gesture.cx, gesture.cy);
+  cam.zoom *= g.d / gesture.d;
+  clampCam();
+  // ce point doit maintenant se retrouver sous le nouveau milieu -> gère zoom + déplacement
+  cam.x = anchor.x - (g.cx - r.left)/cam.zoom;
+  cam.y = anchor.y - (g.cy - r.top)/cam.zoom;
+  clampCam();
+  gesture = g;
+  needPreview();
+}
+function gInfo(a,b){
+  const dx=a.x-b.x, dy=a.y-b.y;
+  return { d: Math.max(1, Math.hypot(dx,dy)), cx:(a.x+b.x)/2, cy:(a.y+b.y)/2 };
+}
+
+/* ============================ UI ============================ */
+function updatePanBtn(){
+  $('#t-pan').classList.toggle('on', panMode);
+  if(panMode) document.querySelectorAll('#bar .tbtn[data-tool],#bar .tbtn[data-ctool],#bar .tbtn[data-rtool],#bar .tbtn[data-etarget]').forEach(b=>b.classList.remove('on'));
+}
+function selectTool(t){
+  tool = t; panMode = false;
+  document.querySelectorAll('#bar .tbtn[data-tool]').forEach(b=>b.classList.toggle('on', b.dataset.tool===t));
+  $('#grp-size').style.display = (appMode==='province' && (t==='brush'||t==='erase')) ? 'flex' : 'none';
+  updatePanBtn();
+}
+function selectCTool(c){
+  ctool = c; panMode = false;
+  document.querySelectorAll('#bar .tbtn[data-ctool]').forEach(b=>b.classList.toggle('on', b.dataset.ctool===c));
+  updatePanBtn();
+}
+function selectRTool(c){
+  rtool = c; panMode = false;
+  document.querySelectorAll('#bar .tbtn[data-rtool]').forEach(b=>b.classList.toggle('on', b.dataset.rtool===c));
+  updatePanBtn();
+}
+function setMode(m){
+  if(m===appMode || (m!=='province' && m!=='country' && m!=='region' && m!=='edit')) return;
+  if(drawId!==null) endDraw();
+  appMode = m;
+  if(m!=='edit') lastPaintMode = m;
+  $('#bar').dataset.mode = m;
+  $('#bar').dataset.super = (m==='edit') ? 'edit' : 'paint';
+  const st = $('#t-supertoggle');
+  st.querySelector('.ic-edit').hidden = (m==='edit');
+  st.querySelector('.ic-paint').hidden = (m!=='edit');
+  st.title = (m==='edit') ? 'Passer en mode Peinture' : 'Passer en mode Édition';
+  document.querySelectorAll('#bar .submode[data-submode]').forEach(b=>{
+    b.classList.toggle('on', b.dataset.submode===m);
+  });
+  $('#hud').dataset.mode = m;
+  $('#editpanel').hidden = (m !== 'edit');
+  if(m==='country'){
+    if(maxCid===0) newCountry();
+    rebuildCountrySelect(); setCurCountry(curCid || (maxCid>=1?1:0));
+    selectCTool(ctool);
+  } else if(m==='region'){
+    rebuildRegionSelect();
+    setCurRegion((curRid>0 && regions[curRid]) ? curRid : (maxRid>=1?1:0));
+    selectRTool(rtool);
+  } else if(m==='edit'){
+    selectETarget(etarget);
+    renderEditPanel();
+  } else {
+    selectTool(tool);
+  }
+  needRaster();
+}
+$('#t-supertoggle').addEventListener('click', ()=>setMode(appMode==='edit' ? lastPaintMode : 'edit'));
+document.querySelectorAll('#bar .submode[data-submode]').forEach(b=>{
+  b.addEventListener('click', ()=>setMode(b.dataset.submode));
+});
+document.querySelectorAll('#bar .tbtn[data-tool]').forEach(b=>{
+  b.addEventListener('click', ()=>selectTool(b.dataset.tool));
+});
+document.querySelectorAll('#bar .tbtn[data-ctool]').forEach(b=>{
+  b.addEventListener('click', ()=>selectCTool(b.dataset.ctool));
+});
+document.querySelectorAll('#bar .tbtn[data-rtool]').forEach(b=>{
+  b.addEventListener('click', ()=>selectRTool(b.dataset.rtool));
+});
+document.querySelectorAll('#bar .tbtn[data-etarget]').forEach(b=>{
+  b.addEventListener('click', ()=>selectETarget(b.dataset.etarget));
+});
+$('#t-pan').addEventListener('click', ()=>{ panMode = !panMode; updatePanBtn(); });
+$('#t-new').addEventListener('click', newProvince);
+$('#c-new').addEventListener('click', newCountry);
+$('#hud-cnew').addEventListener('click', newCountry);
+$('#hud-new').addEventListener('click', newProvince);
+$('#r-new').addEventListener('click', newRegion);
+$('#hud-rnew').addEventListener('click', newRegion);
+$('#csel').addEventListener('change', e=>{ setCurCountry(+e.target.value); });
+$('#cname').addEventListener('input', e=>{
+  if(curCid>0 && countries[curCid]){ setCountryName(curCid, e.target.value); scheduleSave(); }
+});
+$('#rsel').addEventListener('change', e=>{ setCurRegion(+e.target.value); });
+$('#rname').addEventListener('input', e=>{
+  if(curRid>0 && regions[curRid]){
+    regions[curRid].name = e.target.value;
+    const opt = $('#rsel').querySelector('option[value="'+curRid+'"]');
+    if(opt) opt.textContent = '#'+curRid + (e.target.value ? ' '+e.target.value : '');
+    scheduleSave();
+  }
+});
+$('#cerase').addEventListener('change', ()=>{});
+$('#rerase').addEventListener('change', ()=>{});
+$('#t-undo').addEventListener('click', undo);
+$('#t-redo').addEventListener('click', redo);
+$('#t-fit').addEventListener('click', fitView);
+$('#t-bg').addEventListener('click', ()=>{ renderLayersPanel(); openSheet('#layers'); });
+$('#s-layers').addEventListener('click', ()=>{ $('#settings').hidden=true; renderLayersPanel(); openSheet('#layers'); });
+$('#t-set').addEventListener('click', ()=>{
+  $('#s-cursize').textContent = W+'×'+H;
+  $('#s-neww').value = W; $('#s-newh').value = H;
+  openSheet('#settings');
+});
+$('#s-help').addEventListener('click', ()=>{ $('#settings').hidden=true; openSheet('#help'); });
+
+$('#size').addEventListener('input', e=>{ brushPx = +e.target.value; $('#sizeval').textContent = brushPx; savePrefs(); });
+$('#pressure').addEventListener('change', e=>{ usePressure = e.target.checked; savePrefs(); });
+$('#overwrite').addEventListener('change', e=> overwrite = e.target.checked);
+
+function openSheet(sel){ $(sel).hidden = false; }
+document.querySelectorAll('.sheet').forEach(s=>{
+  s.addEventListener('click', e=>{ if(e.target===s || e.target.hasAttribute('data-close')) s.hidden = true; });
+});
+
+/* settings bindings */
+$('#s-edges').addEventListener('change', e=>{ showEdges=e.target.checked; needRaster(); savePrefs(); });
+$('#s-finger').addEventListener('change', e=>{ allowFinger=e.target.checked; savePrefs(); });
+$('#s-fullscreen').addEventListener('click', ()=>{
+  const el = document.documentElement;
+  const rq = el.requestFullscreen || el.webkitRequestFullscreen;
+  const ex = document.exitFullscreen || document.webkitExitFullscreen;
+  if(document.fullscreenElement || document.webkitFullscreenElement){ ex && ex.call(document); return; }
+  if(!rq){ toast('Plein écran non disponible sur ce navigateur'); return; }
+  Promise.resolve(rq.call(el)).then(()=>{ $('#settings').hidden = true; }).catch(()=>{});
+});
+document.addEventListener('fullscreenchange', ()=>{
+  const b = $('#s-fullscreen'); if(b) b.textContent = document.fullscreenElement ? 'Quitter' : 'Activer';
+});
+$('#s-auto').addEventListener('change', e=>{ autoSaveOn=e.target.checked; savePrefs(); });
+$('#s-savenow').addEventListener('click', ()=>{
+  clearTimeout(saveTimer);
+  toast(flushSave() ? 'Sauvegardé dans le navigateur' : 'Réessaie dans une seconde (tracé en cours)');
+});
+$('#s-save').addEventListener('click', saveProject);
+$('#s-open').addEventListener('click', ()=>$('#fileproj').click());
+$('#s-home').addEventListener('click', ()=>{ $('#settings').hidden=true; goHome(); });
+$('#s-compact').addEventListener('click', compactProvinces);
+$('#s-reset').addEventListener('click', ()=>{
+  if(!confirm('Effacer tout le dessin de ce projet (garde la taille et le nom) ?')) return;
+  ids.fill(0); maxId=0; topProvEmpty=false; setCurId(0);
+  provCountry.fill(0); countries.length=1; maxCid=0; curCid=0;
+  provRegion.fill(0); regions.length=1; maxRid=0; curRid=0;
+  provTerrain.fill(0); editSel=null;
+  rebuildCountrySelect(); setCurCountry(0);
+  rebuildRegionSelect(); setCurRegion(0);
+  renderEditPanel();
+  undoStack.length=0; redoStack.length=0;
+  refreshUndoButtons(); markDirty(); markDirtyC(); markDirtyR(); fitView(); toast('Projet vidé');
+});
+$('#s-export').addEventListener('click', exportAll);
+$('#s-enlarge').addEventListener('click', ()=>{
+  const w = +$('#s-neww').value||0, h = +$('#s-newh').value||0;
+  if(w<W || h<H){ toast('Seulement plus grand que la taille actuelle'); return; }
+  if(enlargeWorld(w,h)) $('#s-cursize').textContent = W+'×'+H;
+});
+
+/* ============================ panneau des calques ============================ */
+function svgEye(open){
+  return open
+    ? '<svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>'
+    : '<svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/><path d="M4 4l16 16"/></svg>';
+}
+function renderLayersPanel(){
+  const list = $('#lay-list');
+  list.innerHTML = '';
+  bgLayers.forEach(l=>{
+    const row = document.createElement('div');
+    row.className = 'lay-row'; row.dataset.id = l.id;
+    row.innerHTML =
+      '<div class="lay-top">' +
+        '<span class="lay-handle" title="Glisser pour réordonner">⠿</span>' +
+        '<button class="lay-eye' + (l.visible?'':' off') + '" title="Visible">' + svgEye(l.visible) + '</button>' +
+        '<input class="lay-name" value="' + escAttr(l.name) + '" autocomplete="off">' +
+        '<button class="lay-x" title="Supprimer">×</button>' +
+      '</div>' +
+      '<div class="lay-bottom">' +
+        '<input type="range" min="0" max="100" value="' + Math.round(l.opacity*100) + '">' +
+        '<span class="lay-opval">' + Math.round(l.opacity*100) + '%</span>' +
+        '<button class="lay-xform' + (transformLayerId===l.id?' on':'') + '">Position / taille</button>' +
+      '</div>';
+    row.querySelector('.lay-handle').addEventListener('pointerdown', e=>{
+      e.preventDefault();
+      dragState = { id:l.id, pointerId:e.pointerId };
+      row.classList.add('dragging');
+    });
+    row.querySelector('.lay-eye').addEventListener('click', ()=>{
+      l.visible = !l.visible; needRaster(); scheduleSave(); renderLayersPanel();
+    });
+    row.querySelector('.lay-name').addEventListener('input', e=>{ l.name = e.target.value; scheduleSave(); });
+    row.querySelector('.lay-x').addEventListener('click', ()=>removeBgLayer(l.id));
+    const rng = row.querySelector('input[type=range]'), val = row.querySelector('.lay-opval');
+    rng.addEventListener('input', e=>{
+      l.opacity = (+e.target.value)/100; val.textContent = e.target.value+'%'; needRaster(); scheduleSave();
+    });
+    row.querySelector('.lay-xform').addEventListener('click', ()=>{
+      const goingOn = transformLayerId !== l.id;
+      setTransformLayer(goingOn ? l.id : null);
+      if(goingOn) $('#layers').hidden = true;
+      else renderLayersPanel();
+    });
+    list.appendChild(row);
+  });
+  const addBtn = $('#lay-add');
+  addBtn.disabled = bgLayers.length >= BG_MAX;
+  addBtn.style.opacity = bgLayers.length >= BG_MAX ? .4 : 1;
+}
+let dragState = null;   // { id, pointerId } — réordonnancement des calques par glisser
+document.addEventListener('pointermove', e=>{
+  if(!dragState) return;
+  const rows = [...$('#lay-list').querySelectorAll('.lay-row')];
+  let overIdx = -1;
+  for(let i=0;i<rows.length;i++){
+    const r = rows[i].getBoundingClientRect();
+    if(e.clientY>=r.top && e.clientY<=r.bottom){ overIdx = i; break; }
+  }
+  if(overIdx<0) return;
+  const curIdx = bgLayers.findIndex(x=>x.id===dragState.id);
+  if(curIdx<0 || overIdx===curIdx) return;
+  const [item] = bgLayers.splice(curIdx,1);
+  bgLayers.splice(overIdx,0,item);
+  renderLayersPanel();
+  needRaster();
+});
+document.addEventListener('pointerup', e=>{
+  if(!dragState || dragState.pointerId!==e.pointerId) return;
+  dragState = null;
+  scheduleSave();
+});
+$('#lay-add').addEventListener('click', ()=>$('#filebg').click());
+$('#filebg').addEventListener('change', e=>{
+  const f = e.target.files[0]; e.target.value=''; if(!f) return;
+  addBgLayer(f, f.name.replace(/\.[^.]+$/,'')).then(()=>toast('Fond ajouté'));
+});
+
+/* raccourcis clavier */
+addEventListener('keydown', e=>{
+  if(e.target.tagName==='INPUT' || e.target.tagName==='SELECT' || e.target.tagName==='TEXTAREA') return;
+  const k = e.key.toLowerCase();
+  if((e.ctrlKey||e.metaKey) && k==='z'){ e.preventDefault(); undo(); return; }
+  if((e.ctrlKey||e.metaKey) && (k==='y' || (k==='z'&&e.shiftKey))){ e.preventDefault(); redo(); return; }
+  if((e.ctrlKey||e.metaKey) && k==='s'){ e.preventDefault(); saveProject(); return; }
+  if(e.ctrlKey||e.metaKey) return;
+  if(k==='m'){
+    setMode(appMode==='province' ? 'country' : appMode==='country' ? 'region' : appMode==='region' ? 'edit' : 'province');
+    return;
+  }
+  if(k==='h'){ panMode=!panMode; updatePanBtn(); return; }
+  if(k==='f'){ fitView(); return; }
+  if(appMode==='country'){
+    if(k==='n') newCountry();
+    else if(k==='a') selectCTool('assign');
+    else if(k==='i') selectCTool('cpick');
+    return;
+  }
+  if(appMode==='region'){
+    if(k==='n') newRegion();
+    else if(k==='a') selectRTool('assign');
+    else if(k==='r') selectRTool('merge');
+    else if(k==='i') selectRTool('rpick');
+    return;
+  }
+  if(appMode==='edit'){
+    if(k==='1') selectETarget('province');
+    else if(k==='2') selectETarget('country');
+    else if(k==='3') selectETarget('region');
+    else if(etarget==='province' && k==='[') setTerrain((eterr - 1 + TERRAINS.length) % TERRAINS.length);
+    else if(etarget==='province' && k===']') setTerrain((eterr + 1) % TERRAINS.length);
+    return;
+  }
+  if(k==='b') selectTool('brush');
+  else if(k==='e') selectTool('erase');
+  else if(k==='g') selectTool('bucket');
+  else if(k==='i') selectTool('pick');
+  else if(k==='n') newProvince();
+  else if(k==='['){ brushPx=Math.max(1,brushPx-2); $('#size').value=brushPx; $('#sizeval').textContent=brushPx; savePrefs(); }
+  else if(k===']'){ brushPx=Math.min(90,brushPx+2); $('#size').value=brushPx; $('#sizeval').textContent=brushPx; savePrefs(); }
+});
+
+/* ============================ calques de fond ============================ */
+function newBgId(){ return 'bg_' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function decodeBgImage(blob){
+  return new Promise((res,rej)=>{
+    const img = new Image();
+    img.onload = ()=>{
+      let w = img.naturalWidth, h = img.naturalHeight;
+      const sc = Math.min(1, BG_MAXSIDE/Math.max(w,h));
+      w = Math.max(1,Math.round(w*sc)); h = Math.max(1,Math.round(h*sc));
+      const c = document.createElement('canvas'); c.width=w; c.height=h;
+      const cx = c.getContext('2d'); cx.drawImage(img,0,0,w,h);
+      let d;
+      try{ d = cx.getImageData(0,0,w,h); }
+      catch(err){ toast('Image inaccessible (sécurité navigateur)'); rej(err); return; }
+      const d32 = new Uint32Array(d.data.buffer.slice(0));   // garde l'alpha par pixel (PNG transparent)
+      res({ w, h, d32 });
+    };
+    img.onerror = rej;
+    img.src = URL.createObjectURL(blob);
+  });
+}
+async function addBgLayer(blob, name){
+  if(bgLayers.length >= BG_MAX){ toast('Maximum ' + BG_MAX + ' fonds'); return null; }
+  let dec;
+  try{ dec = await decodeBgImage(blob); }catch(e){ return null; }
+  const ww = W, wh = Math.max(1, Math.round(W * (dec.h/dec.w)));   // calé sur la largeur du monde, ratio préservé
+  const layer = {
+    id: newBgId(), name: name || ('Fond ' + (bgLayers.length+1)),
+    blob, w:dec.w, h:dec.h, d32:dec.d32,
+    x:0, y:0, ww, wh, opacity:0.6, visible:true
+  };
+  bgLayers.unshift(layer);   // nouveau calque = au-dessus des autres
+  bgDirtyForSave = true;
+  needRaster(); scheduleSave(); renderLayersPanel();
+  return layer;
+}
+function findBgLayer(id){ return bgLayers.find(l=>l.id===id) || null; }
+function removeBgLayer(id){
+  const i = bgLayers.findIndex(l=>l.id===id);
+  if(i<0) return;
+  bgLayers.splice(i,1);
+  if(transformLayerId===id) transformLayerId=null;
+  bgDirtyForSave = true;
+  needRaster(); scheduleSave(); renderLayersPanel();
+}
+function moveBgLayer(id, dir){   // dir -1 = monte (vers le dessus), +1 = descend
+  const i = bgLayers.findIndex(l=>l.id===id);
+  const j = i+dir;
+  if(i<0 || j<0 || j>=bgLayers.length) return;
+  const tmp = bgLayers[i]; bgLayers[i] = bgLayers[j]; bgLayers[j] = tmp;
+  needRaster(); scheduleSave(); renderLayersPanel();
+}
+
+/* ============================ RLE + fichier projet ============================ */
+function encodeRLE(){
+  const runs = [];
+  let i = 0;
+  while(i<NPX){
+    const v = ids[i]; let j = i+1;
+    while(j<NPX && ids[j]===v) j++;
+    runs.push(v, j-i); i = j;
+  }
+  const buf = new ArrayBuffer(runs.length/2*6);
+  const dv = new DataView(buf);
+  let o = 0;
+  for(let k=0;k<runs.length;k+=2){ dv.setUint16(o,runs[k],true); o+=2; dv.setUint32(o,runs[k+1],true); o+=4; }
+  return new Uint8Array(buf);
+}
+function decodeRLE(u8){
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  let o = 0, p = 0;
+  while(o < u8.byteLength && p < NPX){
+    const v = dv.getUint16(o,true); o+=2;
+    const c = dv.getUint32(o,true); o+=4;
+    ids.fill(v, p, p+c); p += c;
+  }
+}
+function buildHeader(){
+  const pal = [null];
+  for(let id=1; id<=maxId; id++) pal.push([palR[id],palG[id],palB[id]]);
+  const cts = [null];
+  for(let cid=1; cid<=maxCid; cid++){
+    const c = countries[cid];
+    cts.push(c ? { n:c.name||'', t:c.tag||'', a:c.tagAuto?1:0, c:[cpalR[cid],cpalG[cid],cpalB[cid]] }
+               : { n:'', c:[cpalR[cid],cpalG[cid],cpalB[cid]] });
+  }
+  const pc = [];
+  for(let id=1; id<=maxId; id++) pc.push(provCountry[id]);
+  const rgs = [null];
+  for(let rid=1; rid<=maxRid; rid++){
+    const r = regions[rid];
+    rgs.push(r ? { n:r.name||'', k:r.country, p:r.pop||0, o:r.notes||'', c:[rpalR[rid],rpalG[rid],rpalB[rid]] } : null);
+  }
+  const pr = [];
+  for(let id=1; id<=maxId; id++) pr.push(provRegion[id]);
+  const pt = [];
+  for(let id=1; id<=maxId; id++) pt.push(provTerrain[id]);
+  return { magic:'BME2', v:4, W, H, maxId, curId, pal,
+           maxCid, curCid, countries:cts, provCountry:pc,
+           maxRid, curRid, regions:rgs, provRegion:pr,
+           provTerrain:pt, terrains:TERRAINS,
+           bgLayers: bgLayers.map(l=>({ id:l.id, name:l.name, x:l.x, y:l.y, ww:l.ww, wh:l.wh, opacity:l.opacity, visible:l.visible })),
+           cam:{x:cam.x,y:cam.y,zoom:cam.zoom}, ts:Date.now() };
+}
+function applyHeader(hd){
+  maxId = hd.maxId|0;
+  for(let id=1; id<=maxId; id++){
+    const c = hd.pal[id] || provColor(id);
+    palR[id]=c[0]; palG[id]=c[1]; palB[id]=c[2];
+  }
+  provCountry.fill(0);
+  countries.length = 1;
+  maxCid = hd.maxCid|0;
+  for(let cid=1; cid<=maxCid; cid++){
+    const e = hd.countries && hd.countries[cid];
+    const col = (e && e.c) || countryColor(cid);
+    cpalR[cid]=col[0]; cpalG[cid]=col[1]; cpalB[cid]=col[2];
+    const tg = (e && e.t) || '';
+    countries[cid] = { name: (e && e.n) || '', tag: tg,
+      tagAuto: (e && e.a!=null) ? !!e.a : !tg };   // vieux fichiers : auto seulement si aucun code enregistré
+  }
+  if(hd.provCountry){
+    const pc = hd.provCountry;
+    for(let id=1; id<=maxId && (id-1)<pc.length; id++) provCountry[id] = pc[id-1]|0;
+  }
+  provRegion.fill(0);
+  regions.length = 1;
+  maxRid = hd.maxRid|0;
+  for(let rid=1; rid<=maxRid; rid++){
+    const e = hd.regions && hd.regions[rid];
+    if(!e){ regions[rid] = null; continue; }
+    const col = e.c || regionColor(rid);
+    rpalR[rid]=col[0]; rpalG[rid]=col[1]; rpalB[rid]=col[2];
+    regions[rid] = { name: e.n || '', country: e.k|0, pop: e.p|0, notes: e.o || '' };
+  }
+  provTerrain.fill(0);
+  if(hd.provTerrain){
+    const pt = hd.provTerrain;
+    for(let id=1; id<=maxId && (id-1)<pt.length; id++) provTerrain[id] = pt[id-1]|0;
+  }
+  editSel = null;
+  if(hd.provRegion){
+    const pr = hd.provRegion;
+    for(let id=1; id<=maxId && (id-1)<pr.length; id++) provRegion[id] = pr[id-1]|0;
+  }
+  if(hd.cam){ cam.x=hd.cam.x; cam.y=hd.cam.y; cam.zoom=hd.cam.zoom; }
+  topProvEmpty = false;
+  setCurId(hd.curId && hd.curId<=maxId ? hd.curId : maxId);
+  curCid = (hd.curCid && hd.curCid<=maxCid) ? hd.curCid : (maxCid>=1 ? 1 : 0);
+  rebuildCountrySelect(); setCurCountry(curCid);
+  curRid = (hd.curRid && regions[hd.curRid]) ? hd.curRid : 0;
+  rebuildRegionSelect(); setCurRegion(curRid);
+  renderEditPanel();
+  cDirty = true; rDirty = true;
+}
+function packProject(){
+  const rle = encodeRLE();
+  const hd = new TextEncoder().encode(JSON.stringify(buildHeader()));
+  const head = new Uint8Array(8);
+  head.set([66,77,69,50]);                        // "BME2"
+  new DataView(head.buffer).setUint32(4, hd.length, true);
+  return new Blob([head, hd, rle], {type:'application/octet-stream'});
+}
+function saveProject(){
+  const blob = packProject();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'carte_' + new Date().toISOString().slice(0,10) + '.bopmap';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+  setSaveDot('ok'); toast('Projet sauvé');
+}
+$('#fileproj').addEventListener('change', e=>{
+  const f = e.target.files[0]; e.target.value=''; if(!f) return;
+  f.arrayBuffer().then(ab=>{
+    try{
+      const name = f.name.replace(/\.bopmap$/i,'') || 'Projet importé';
+      importProjectFile(new Uint8Array(ab), name);
+      toast('Projet importé'); $('#settings').hidden=true;
+    }
+    catch(err){ console.error(err); toast('Fichier illisible'); }
+  });
+});
+/* décode un .bopmap dans les buffers courants (réalloue le monde à la bonne taille d'abord) */
+function openProjectBuffer(u8){
+  const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+  if(String.fromCharCode(u8[0],u8[1],u8[2],u8[3]) !== 'BME2') throw new Error('magic');
+  const hlen = dv.getUint32(4, true);
+  const hd = JSON.parse(new TextDecoder().decode(u8.subarray(8, 8+hlen)));
+  allocateWorld(hd.W||DEFAULT_W, hd.H||DEFAULT_H);
+  decodeRLE(u8.subarray(8+hlen));
+  applyHeader(hd);
+  undoStack.length=0; redoStack.length=0; refreshUndoButtons();
+  return hd;
+}
+/* importe un fichier .bopmap comme NOUVEAU projet (n'écrase jamais le projet actuellement ouvert) */
+function importProjectFile(u8, name){
+  openProjectBuffer(u8);
+  curProjectId = 'p_' + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
+  curProjectName = name || 'Projet importé';
+  bgLayers = [];                          // le fichier .bopmap ne transporte pas d'images de fond
+  enterEditor();
+  doAutoSave();
+  refreshHomeGrid();
+}
+
+/* ============================ IndexedDB (multi-projets) ============================ */
+let idb = null;
+function idbOpen(){
+  return new Promise(res=>{
+    const rq = indexedDB.open('bme2', 2);
+    rq.onupgradeneeded = ()=>{
+      const db = rq.result;
+      if(!db.objectStoreNames.contains('kv')) db.createObjectStore('kv');             // v1, legacy (migration uniquement)
+      if(!db.objectStoreNames.contains('projects')) db.createObjectStore('projects', { keyPath:'id' });
+    };
+    rq.onsuccess = ()=>{ idb = rq.result; res(idb); };
+    rq.onerror = ()=>{ res(null); };
+  });
+}
+function idbPut(store, val, key){
+  if(!idb) return;
+  try{ const os = idb.transaction(store,'readwrite').objectStore(store); key!==undefined ? os.put(val,key) : os.put(val); }catch(e){}
+}
+function idbGet(store, key){
+  return new Promise(res=>{
+    if(!idb) return res(null);
+    try{ const rq = idb.transaction(store,'readonly').objectStore(store).get(key); rq.onsuccess=()=>res(rq.result); rq.onerror=()=>res(null); }
+    catch(e){ res(null); }
+  });
+}
+function idbGetAll(store){
+  return new Promise(res=>{
+    if(!idb) return res([]);
+    try{ const rq = idb.transaction(store,'readonly').objectStore(store).getAll(); rq.onsuccess=()=>res(rq.result||[]); rq.onerror=()=>res([]); }
+    catch(e){ res([]); }
+  });
+}
+function idbDelete(store, key){
+  if(!idb) return;
+  try{ idb.transaction(store,'readwrite').objectStore(store).delete(key); }catch(e){}
+}
+
+/* ============================ préférences (globales, pas liées à un projet) ============================ */
+function currentPrefs(){
+  return { allowFinger, usePressure, showEdges, autoSaveOn, brushPx };
+}
+function savePrefs(){ idbPut('kv', currentPrefs(), 'prefs'); }
+function applyPrefs(p){
+  if(!p) return;
+  if(p.allowFinger!=null) allowFinger = p.allowFinger;
+  if(p.usePressure!=null) usePressure = p.usePressure;
+  if(p.showEdges!=null) showEdges = p.showEdges;
+  if(p.autoSaveOn!=null) autoSaveOn = p.autoSaveOn;
+  if(p.brushPx!=null) brushPx = p.brushPx;
+  $('#s-finger').checked = allowFinger;
+  $('#pressure').checked = usePressure;
+  $('#s-edges').checked = showEdges;
+  $('#s-auto').checked = autoSaveOn;
+  $('#size').value = brushPx; $('#sizeval').textContent = brushPx;
+}
+let saveTimer = 0;
+function scheduleSave(){
+  setSaveDot('dirty');
+  if(!autoSaveOn) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(doAutoSave, AUTOSAVE_MS);
+}
+function buildProjectRecord(){
+  return {
+    id: curProjectId, name: curProjectName, w:W, h:H,
+    header: buildHeader(), rle: encodeRLE(),
+    bg: bgLayers.map(l=>({ id:l.id, blob:l.blob })),
+    updatedAt: Date.now(), thumb: renderThumbnail()
+  };
+}
+/* sauvegarde immédiate, sans tenir compte du réglage "sauvegarde auto" — utilisé en quittant
+   le projet (retour accueil / fermeture d'onglet) pour ne jamais perdre de travail */
+function flushSave(){
+  if(!idb || !curProjectId) return false;
+  if(drawId !== null || gesture || curOp || curOpC || curOpR || curOpT) return false;   // état de tracé incomplet, trop risqué
+  try{
+    idbPut('projects', buildProjectRecord());
+    if(bgDirtyForSave) bgDirtyForSave = false;
+    setSaveDot('ok');
+    return true;
+  }catch(e){ console.warn('save', e); return false; }
+}
+function doAutoSave(){
+  if(!autoSaveOn) return;
+  if(drawId !== null || gesture || curOp || curOpC || curOpR || curOpT){ scheduleSave(); return; }   // pas pendant un tracé
+  flushSave();
+}
+function setSaveDot(state){
+  const d = $('#savedot');
+  d.classList.remove('dirty','ok');
+  if(state) d.classList.add(state);
+}
+addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='hidden') flushSave(); });
+addEventListener('beforeunload', flushSave);
+
+/* ============================ export complet (PNG + JSON) ============================ */
+function triggerDownload(blob, filename){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+}
+function exportFolder(){
+  return 'bme2_export_' + new Date().toISOString().slice(0,10) + '/';
+}
+function provincePresence(){
+  // quelles provinces ont encore au moins un pixel (une province vidée par la gomme
+  // reste dans maxId/palette mais ne doit pas apparaître dans l'export)
+  const present = new Uint8Array(maxId+1);
+  for(let i=0;i<NPX;i++){ const v = ids[i]; if(v) present[v] = 1; }
+  return present;
+}
+/* petite vignette (dataURL) du projet courant, pour la carte d'accueil */
+function renderThumbnail(maxW, maxH){
+  maxW = maxW||220; maxH = maxH||140;
+  const scale = Math.min(maxW/W, maxH/H);
+  const tw = Math.max(1, Math.round(W*scale)), th = Math.max(1, Math.round(H*scale));
+  const c = document.createElement('canvas'); c.width=tw; c.height=th;
+  const cx = c.getContext('2d');
+  const img = cx.createImageData(tw, th);
+  const b32 = new Uint32Array(img.data.buffer);
+  for(let ty=0; ty<th; ty++){
+    const sy = Math.min(H-1, (ty/scale)|0);
+    const rowB = sy*W;
+    for(let tx=0; tx<tw; tx++){
+      const sx = Math.min(W-1, (tx/scale)|0);
+      const id = ids[rowB+sx];
+      b32[ty*tw+tx] = id ? (0xff000000 | (palB[id]<<16) | (palG[id]<<8) | palR[id]) : 0xff130f0e;
+    }
+  }
+  cx.putImageData(img, 0, 0);
+  return c.toDataURL('image/png');
+}
+function exportPNG(folder, cb){
+  let c;
+  try{
+    c = document.createElement('canvas'); c.width = W; c.height = H;
+    const cx = c.getContext('2d');
+    const CH = 512;
+    for(let y=0; y<H; y+=CH){
+      const h = Math.min(CH, H-y);
+      const img = cx.createImageData(W, h);
+      const b32 = new Uint32Array(img.data.buffer);
+      for(let yy=0; yy<h; yy++){
+        const row = (y+yy)*W;
+        for(let x=0; x<W; x++){
+          const id = ids[row+x];
+          b32[yy*W+x] = id ? (0xff000000 | (palB[id]<<16) | (palG[id]<<8) | palR[id]) : 0xff000000;
+        }
+      }
+      cx.putImageData(img, 0, y);
+    }
+  }catch(err){ toast('Export impossible sur cet appareil'); return; }
+  c.toBlob(b=>{
+    if(!b){ toast('Export impossible (image trop grande)'); return; }
+    triggerDownload(b, folder+'provinces.png');
+    if(cb) cb();
+  }, 'image/png');
+}
+function buildProvincesJSON(present){
+  const out = { w:W, h:H, terrains:TERRAINS, provinces:[] };
+  for(let id=1; id<=maxId; id++){
+    if(!present[id]) continue;
+    out.provinces.push({
+      id, color:[palR[id],palG[id],palB[id]],
+      country: provCountry[id], region: provRegion[id], terrain: provTerrain[id]
+    });
+  }
+  return out;
+}
+function buildRegionsJSON(present){
+  const byRegion = new Map();
+  for(let id=1; id<=maxId; id++){
+    if(!present[id]) continue;
+    const rid = provRegion[id]; if(!rid) continue;
+    if(!byRegion.has(rid)) byRegion.set(rid, []);
+    byRegion.get(rid).push(id);
+  }
+  const out = { regions:[] };
+  for(let rid=1; rid<=maxRid; rid++){
+    const r = regions[rid]; if(!r) continue;
+    out.regions.push({
+      id: rid, name: r.name||'', country: r.country|0,
+      population: r.pop||0, notes: r.notes||'',
+      provinces: byRegion.get(rid) || []
+    });
+  }
+  return out;
+}
+function buildCountriesJSON(){
+  const byCountry = new Map();
+  for(let rid=1; rid<=maxRid; rid++){
+    const r = regions[rid]; if(!r) continue;
+    if(!byCountry.has(r.country)) byCountry.set(r.country, []);
+    byCountry.get(r.country).push(rid);
+  }
+  const out = { countries:[] };
+  for(let cid=1; cid<=maxCid; cid++){
+    const c = countries[cid]; if(!c) continue;
+    out.countries.push({
+      id: cid, name: c.name||'', tag: c.tag||'',
+      regions: byCountry.get(cid) || []
+    });
+  }
+  return out;
+}
+function exportAll(){
+  const folder = exportFolder();
+  const present = provincePresence();
+  toast('Export en cours…');
+  exportPNG(folder, ()=>{
+    setTimeout(()=>{
+      triggerDownload(new Blob([JSON.stringify(buildProvincesJSON(present))], {type:'application/json'}), folder+'provinces.json');
+      setTimeout(()=>{
+        triggerDownload(new Blob([JSON.stringify(buildRegionsJSON(present))], {type:'application/json'}), folder+'regions.json');
+        setTimeout(()=>{
+          triggerDownload(new Blob([JSON.stringify(buildCountriesJSON())], {type:'application/json'}), folder+'countries.json');
+          toast('Export terminé : ' + folder);
+        }, 300);
+      }, 300);
+    }, 300);
+  });
+}
+
+/* ============================ service worker ============================ */
+/* le manifeste PWA est un vrai fichier (manifest.webmanifest, display:fullscreen)
+   référencé dans le <head> — plus de manifeste blob généré au runtime. */
+function installSW(){
+  if(!('serviceWorker' in navigator)) return;
+  if(!location.protocol.startsWith('http')) return;   // file:// : inutile, l'app est déjà autonome
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
+
+/* ============================ accueil multi-projets ============================ */
+function newProjectId(){ return 'p_' + Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+function fmtDate(ts){
+  if(!ts) return '';
+  const d = new Date(ts);
+  return d.toLocaleDateString('fr-FR', {day:'2-digit', month:'short'}) + ' ' + d.toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit'});
+}
+function enterEditor(){
+  $('#home').hidden = true;
+  $('#app').hidden = false;
+  if(!roStarted){ new ResizeObserver(resize).observe(stage); roStarted = true; }
+  resize();
+}
+function showHome(){
+  $('#app').hidden = true;
+  $('#home').hidden = false;
+}
+function goHome(){
+  flushSave();
+  curProjectId = null; curProjectName = '';
+  bgLayers = []; setTransformLayer(null);
+  refreshHomeGrid().then(showHome);
+}
+async function refreshHomeGrid(){
+  const list = await idbGetAll('projects');
+  list.sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
+  const grid = $('#home-grid');
+  grid.querySelectorAll('.proj-card:not(.new)').forEach(el=>el.remove());
+  const newBtn = $('#home-new');
+  for(const rec of list){
+    const card = document.createElement('div');
+    card.className = 'proj-card'; card.tabIndex = 0; card.setAttribute('role','button');
+    const img = document.createElement('img');
+    img.src = rec.thumb || '';
+    img.alt = '';
+    const nm = document.createElement('span'); nm.className='pname'; nm.textContent = rec.name || 'Sans nom';
+    const dt = document.createElement('span'); dt.className='pdate'; dt.textContent = fmtDate(rec.updatedAt) + ' · ' + rec.w + '×' + rec.h;
+    const del = document.createElement('button'); del.className='proj-del'; del.title='Supprimer'; del.textContent='×';
+    del.addEventListener('click', e=>{
+      e.stopPropagation();
+      if(confirm('Supprimer le projet « ' + (rec.name||'Sans nom') + ' » ? C\'est définitif.')){
+        idbDelete('projects', rec.id);
+        refreshHomeGrid();
+      }
+    });
+    card.append(img, nm, dt, del);
+    card.addEventListener('click', ()=>openProjectRecord(rec));
+    card.addEventListener('keydown', e=>{ if(e.key==='Enter' || e.key===' '){ e.preventDefault(); openProjectRecord(rec); } });
+    grid.insertBefore(card, newBtn);
+  }
+}
+async function openProjectRecord(rec){
+  allocateWorld(rec.w || (rec.header && rec.header.W) || DEFAULT_W, rec.h || (rec.header && rec.header.H) || DEFAULT_H);
+  decodeRLE(rec.rle instanceof Uint8Array ? rec.rle : new Uint8Array(rec.rle));
+  applyHeader(rec.header);
+  curProjectId = rec.id; curProjectName = rec.name || '';
+  bgLayers = []; setTransformLayer(null);
+  await loadBgLayersFromRecord(rec);
+  undoStack.length=0; redoStack.length=0; refreshUndoButtons();
+  markDirty();
+  enterEditor();
+  toast('Projet ouvert');
+}
+/* reconstruit bgLayers depuis un enregistrement : rec.bg = [{id,blob}], métadonnées dans
+   rec.header.bgLayers (ordre = ordre d'empilement). Gère aussi l'ancien format mono-fond
+   (rec.bg = un seul Blob + rec.header.bgWorld) pour les projets migrés avant ce jalon. */
+async function loadBgLayersFromRecord(rec){
+  const metas = rec.header && rec.header.bgLayers;
+  let blobs = rec.bg;
+  if(blobs && !Array.isArray(blobs)) blobs = [{ id:'bg1', blob:blobs }];   // ancien format
+  if(!blobs || !blobs.length) return;
+  const legacyMeta = (!metas && rec.header && rec.header.bgWorld)
+    ? [{ id:'bg1', name:'Fond', x:0, y:0, ww:rec.header.bgWorld.w, wh:rec.header.bgWorld.h, opacity:0.6, visible:true }]
+    : null;
+  const orderedMetas = metas || legacyMeta || blobs.map((b,i)=>({ id:b.id, name:'Fond '+(i+1), x:0,y:0, ww:W, wh:H, opacity:0.6, visible:true }));
+  for(const meta of orderedMetas){
+    const b = blobs.find(x=>x.id===meta.id);
+    if(!b || !b.blob) continue;
+    let dec;
+    try{ dec = await decodeBgImage(b.blob); }catch(e){ continue; }
+    bgLayers.push({
+      id: meta.id, name: meta.name||'Fond', blob:b.blob, w:dec.w, h:dec.h, d32:dec.d32,
+      x: meta.x||0, y: meta.y||0, ww: meta.ww||W, wh: meta.wh||H,
+      opacity: meta.opacity!=null ? meta.opacity : 0.6, visible: meta.visible!==false
+    });
+  }
+  needRaster();
+}
+async function createProject(name, w, h, bgFile){
+  w = Math.max(MIN_SIDE, Math.min(MAX_SIDE, w|0));
+  h = Math.max(MIN_SIDE, Math.min(MAX_SIDE, h|0));
+  if(w*h > MAX_PIXELS){ toast('Trop grand pour la mémoire disponible'); return false; }
+  allocateWorld(w, h);
+  maxId = 0; topProvEmpty = false; setCurId(0);
+  provCountry.fill(0); countries.length=1; maxCid=0; curCid=0;
+  provRegion.fill(0); regions.length=1; maxRid=0; curRid=0;
+  provTerrain.fill(0); editSel=null;
+  rebuildCountrySelect(); setCurCountry(0);
+  rebuildRegionSelect(); setCurRegion(0);
+  renderEditPanel();
+  undoStack.length=0; redoStack.length=0; refreshUndoButtons();
+  bgLayers = []; setTransformLayer(null);
+  curProjectId = newProjectId();
+  curProjectName = (name||'').trim() || ('Projet du ' + fmtDate(Date.now()));
+  if(bgFile){
+    await addBgLayer(bgFile, 'Fond');
+  }else{
+    await tryAutoLoadRefBg();
+  }
+  newProvince();
+  enterEditor();
+  fitView();
+  doAutoSave();
+  return true;
+}
+async function tryAutoLoadRefBg(){
+  // si servi en http, on peut proposer la carte de repère locale par défaut ; en file:// silencieux
+  for(const name of ['ref/land.png','ref/boundary.png']){
+    try{
+      const r = await fetch(name);
+      if(!r.ok) continue;
+      const blob = await r.blob();
+      const l = await addBgLayer(blob, 'Repère');
+      if(l) l.visible = false;   // dispo mais masqué par défaut
+      return;
+    }catch(e){}
+  }
+}
+/* migre l'ancienne sauvegarde mono-projet (v ≤ jalon Export) vers un 1er projet de la liste */
+async function migrateLegacyIfNeeded(){
+  const existing = await idbGetAll('projects');
+  if(existing.length > 0) return;
+  const legacy = await idbGet('kv', 'state');
+  if(!legacy || !legacy.header || !legacy.rle) return;
+  const legacyBg = await idbGet('kv', 'bg');
+  const hd = legacy.header;
+  const rle = legacy.rle instanceof Uint8Array ? legacy.rle : new Uint8Array(legacy.rle);
+  let thumb = '';
+  try{
+    allocateWorld(hd.W||DEFAULT_W, hd.H||DEFAULT_H);
+    decodeRLE(rle);
+    thumb = renderThumbnail();
+  }catch(e){}
+  idbPut('projects', {
+    id: newProjectId(), name: 'Projet', w: hd.W||DEFAULT_W, h: hd.H||DEFAULT_H,
+    header: hd, rle, bg: legacyBg||null, updatedAt: hd.ts || Date.now(), thumb
+  });
+}
+
+/* ============================ nouveau projet (dialogue) ============================ */
+let npBgFile = null;
+$('#home-new').addEventListener('click', ()=>{
+  $('#np-name').value = '';
+  $('#np-w').value = DEFAULT_W; $('#np-h').value = DEFAULT_H;
+  npBgFile = null; $('#np-bgname').textContent = '';
+  openSheet('#newproj');
+});
+$('#np-bgpick').addEventListener('click', ()=>$('#np-bgfile').click());
+$('#np-bgfile').addEventListener('change', e=>{
+  const f = e.target.files[0]; e.target.value='';
+  npBgFile = f || null;
+  $('#np-bgname').textContent = f ? f.name : '';
+});
+$('#np-create').addEventListener('click', async ()=>{
+  const w = +$('#np-w').value || DEFAULT_W, h = +$('#np-h').value || DEFAULT_H;
+  if(w<MIN_SIDE || h<MIN_SIDE){ toast('Trop petit (minimum '+MIN_SIDE+'px par côté)'); return; }
+  if(w>MAX_SIDE || h>MAX_SIDE){ toast('Trop grand (maximum '+MAX_SIDE+'px par côté)'); return; }
+  const ok = await createProject($('#np-name').value, w, h, npBgFile);
+  if(ok) $('#newproj').hidden = true;
+});
+
+/* ============================ démarrage ============================ */
+async function boot(){
+  installSW();
+  await idbOpen();
+  applyPrefs(await idbGet('kv', 'prefs'));
+
+  selectTool('brush');
+  selectCTool('assign');
+  selectRTool('assign');
+  buildTerrainChips();
+  document.querySelectorAll('#bar .tbtn[data-etarget]').forEach(b=>b.classList.toggle('on', b.dataset.etarget==='province'));
+  updatePanBtn();
+  refreshUndoButtons();
+
+  await migrateLegacyIfNeeded();
+  await refreshHomeGrid();
+  showHome();
+
+  $('#boot').remove();
+}
+boot().catch(e=>{
+  console.error(e);
+  const b = document.getElementById('boot');
+  if(b) b.textContent = 'Erreur au démarrage : ' + (e && e.message || e);
+});
+})();
+</script>
+</body>
+</html>
