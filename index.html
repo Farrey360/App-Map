@@ -10,7 +10,14 @@
 <meta name="apple-mobile-web-app-title" content="BoP Map 2">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
 <title>BoP Map Editor 2</title>
+<meta name="description" content="Éditeur de carte web pour peindre des provinces au stylet, les regrouper en pays et régions, et exporter provinces.png + JSON. App autonome, hors-ligne, sans compte.">
+<meta property="og:title" content="BoP Map Editor 2">
+<meta property="og:description" content="Peindre des provinces au stylet, les regrouper en pays et régions, exporter une carte d'ids + JSON. App web autonome, hors-ligne.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="icon-512.png">
+<meta name="twitter:card" content="summary">
 <style>
   :root{
     --bg:#0e0f13; --panel:#15171d; --panel2:#1c1f27; --line:#2a2e39;
@@ -29,7 +36,9 @@
     display:flex;justify-content:center;touch-action:pan-y;-webkit-overflow-scrolling:touch}
   #home[hidden]{display:none}
   #home-inner{width:100%;max-width:1100px;padding:32px 20px 60px}
-  #home-inner h1{font-size:19px;font-weight:600;margin:0 0 22px;color:var(--ink)}
+  #home-inner h1{font-size:19px;font-weight:600;margin:0 0 6px;color:var(--ink)}
+  #home-sub{margin:0 0 22px;font-size:13px;color:var(--ink-dim);max-width:640px;line-height:1.5}
+  #home-sub a{color:var(--accent);text-decoration:none}
   #home-grid{display:flex;flex-wrap:wrap;gap:16px}
   .proj-card{position:relative;width:200px;height:160px;border-radius:12px;border:1px solid var(--line);
     background:var(--panel);display:flex;flex-direction:column;overflow:hidden;
@@ -182,7 +191,11 @@
 <body>
 <div id="home">
   <div id="home-inner">
-    <h1>BoP Map Editor 2 — Projets</h1>
+    <h1>BoP Map Editor 2</h1>
+    <p id="home-sub">Peins des provinces au stylet, regroupe-les en pays puis en régions,
+      renseigne le terrain et quelques infos, exporte <code>provinces.png</code> + JSON.
+      Tout reste dans ton navigateur (rien n'est envoyé en ligne). Fonctionne hors-ligne
+      et s'installe comme une app. <a href="https://github.com/farrey360/App-Map" target="_blank" rel="noopener">Code source &amp; aide</a>.</p>
     <div id="home-grid">
       <button class="proj-card new" id="home-new" title="Nouveau projet">
         <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
@@ -379,6 +392,11 @@
       (ex. Téléchargements/bme2_export_2026-09-02/). Toujours les mêmes noms de fichier :
       un nouvel export le même jour écrase les précédents du jour, les jours passés restent.
       Marche mieux sur PC (grande image).</p>
+
+    <h3>À propos</h3>
+    <p class="muted">BoP Map Editor 2 · <span id="s-version"></span> — application web libre (licence MIT).
+      Tout est stocké dans ton navigateur, rien n'est envoyé en ligne.
+      Code source, aide et bugs : <a href="https://github.com/farrey360/App-Map" target="_blank" rel="noopener" style="color:var(--accent)">github.com/farrey360/App-Map</a>.</p>
   </div>
 </div>
 
@@ -487,6 +505,7 @@ let W = DEFAULT_W, H = DEFAULT_H;      // résolution de travail du projet ouver
 let NPX = W*H;
 const MAXID = 65534;                  // limite (Uint16, 0 = vide)
 const MAX_CANVAS_SIDE = 8192;        // borne de sûreté sur un très grand écran
+const APP_VERSION = 'v1.0';
 const AUTOSAVE_MS = 4000;
 const UNDO_MAX = 24;
 const BG_MAXSIDE = 5488;              // le fond est réduit à ça max
@@ -2627,6 +2646,7 @@ $('#np-create').addEventListener('click', async ()=>{
 
 /* ============================ démarrage ============================ */
 async function boot(){
+  const vEl = $('#s-version'); if(vEl) vEl.textContent = APP_VERSION;
   installSW();
   await idbOpen();
   applyPrefs(await idbGet('kv', 'prefs'));

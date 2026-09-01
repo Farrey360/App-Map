@@ -2,7 +2,7 @@
   "name": "BoP Map Editor 2",
   "short_name": "BoP Map 2",
   "description": "Éditeur de carte : peindre les provinces, pays et régions au stylet.",
-  "id": "/bop-map-editor-2/",
+  "id": "./",
   "start_url": "./index.html",
   "scope": "./",
   "display": "fullscreen",
