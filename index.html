@@ -47,6 +47,7 @@
     background:transparent;color:var(--ink-dim)}
   .proj-card.new svg{width:34px;height:34px;fill:none;stroke:currentColor;stroke-width:1.6}
   .proj-card.new:hover{border-color:var(--accent);color:var(--accent)}
+  .proj-card.new .lbl{font-size:12px;margin-top:8px}
 
   /* ---- left toolbar ---- */
   #bar{width:var(--bar-w);flex:0 0 var(--bar-w);background:var(--panel);border-right:1px solid var(--line);
@@ -185,6 +186,11 @@
     <div id="home-grid">
       <button class="proj-card new" id="home-new" title="Nouveau projet">
         <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        <span class="lbl">Nouveau</span>
+      </button>
+      <button class="proj-card new" id="home-import" title="Importer un fichier .bopmap">
+        <svg viewBox="0 0 24 24"><path d="M12 15V3M8 7l4-4 4 4M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>
+        <span class="lbl">Importer .bopmap</span>
       </button>
     </div>
   </div>
@@ -2134,16 +2140,28 @@ function applyHeader(hd){
   renderEditPanel();
   cDirty = true; rDirty = true;
 }
-function packProject(){
+async function packProject(){
   const rle = encodeRLE();
-  const hd = new TextEncoder().encode(JSON.stringify(buildHeader()));
+  // les images de fond voyagent maintenant DANS le .bopmap (après le RLE, une par calque)
+  const layerBufs = [];
+  for(const l of bgLayers){
+    layerBufs.push(l.blob ? new Uint8Array(await l.blob.arrayBuffer()) : new Uint8Array(0));
+  }
+  const hd = buildHeader();
+  hd.v = 5;
+  hd.rleLen = rle.length;
+  hd.bgLayers.forEach((m,i)=>{
+    m.size = layerBufs[i].length;
+    m.mime = (bgLayers[i].blob && bgLayers[i].blob.type) || 'image/png';
+  });
+  const hdBytes = new TextEncoder().encode(JSON.stringify(hd));
   const head = new Uint8Array(8);
   head.set([66,77,69,50]);                        // "BME2"
-  new DataView(head.buffer).setUint32(4, hd.length, true);
-  return new Blob([head, hd, rle], {type:'application/octet-stream'});
+  new DataView(head.buffer).setUint32(4, hdBytes.length, true);
+  return new Blob([head, hdBytes, rle, ...layerBufs], {type:'application/octet-stream'});
 }
-function saveProject(){
-  const blob = packProject();
+async function saveProject(){
+  const blob = await packProject();
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'carte_' + new Date().toISOString().slice(0,10) + '.bopmap';
@@ -2153,34 +2171,50 @@ function saveProject(){
 }
 $('#fileproj').addEventListener('change', e=>{
   const f = e.target.files[0]; e.target.value=''; if(!f) return;
-  f.arrayBuffer().then(ab=>{
-    try{
-      const name = f.name.replace(/\.bopmap$/i,'') || 'Projet importé';
-      importProjectFile(new Uint8Array(ab), name);
-      toast('Projet importé'); $('#settings').hidden=true;
-    }
-    catch(err){ console.error(err); toast('Fichier illisible'); }
-  });
+  f.arrayBuffer()
+    .then(ab=>importProjectFile(new Uint8Array(ab), f.name.replace(/\.bopmap$/i,'') || 'Projet importé'))
+    .then(()=>{ toast('Projet importé'); $('#settings').hidden=true; })
+    .catch(err=>{ console.error(err); toast('Fichier illisible'); });
 });
-/* décode un .bopmap dans les buffers courants (réalloue le monde à la bonne taille d'abord) */
-function openProjectBuffer(u8){
+/* décode un .bopmap dans les buffers courants (réalloue le monde à la bonne taille d'abord).
+   Format v5 : [head][header JSON][RLE][image calque 0][image calque 1]… */
+async function openProjectBuffer(u8){
   const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
   if(String.fromCharCode(u8[0],u8[1],u8[2],u8[3]) !== 'BME2') throw new Error('magic');
   const hlen = dv.getUint32(4, true);
   const hd = JSON.parse(new TextDecoder().decode(u8.subarray(8, 8+hlen)));
   allocateWorld(hd.W||DEFAULT_W, hd.H||DEFAULT_H);
-  decodeRLE(u8.subarray(8+hlen));
+  const rleStart = 8 + hlen;
+  const rleEnd = (hd.rleLen != null) ? rleStart + hd.rleLen : u8.byteLength;   // anciens fichiers : RLE jusqu'à la fin
+  decodeRLE(u8.subarray(rleStart, rleEnd));
   applyHeader(hd);
+  // calques de fond embarqués (rien pour les fichiers d'avant la v5)
+  bgLayers = [];
+  let off = rleEnd;
+  for(const m of (hd.bgLayers || [])){
+    const size = m.size|0;
+    if(size <= 0) continue;
+    const blob = new Blob([u8.slice(off, off+size)], {type: m.mime || 'image/png'});
+    off += size;
+    let dec; try{ dec = await decodeBgImage(blob); }catch(err){ continue; }
+    bgLayers.push({
+      id: m.id, name: m.name||'Fond', blob, w:dec.w, h:dec.h, d32:dec.d32,
+      x: m.x||0, y: m.y||0, ww: m.ww||W, wh: m.wh||H,
+      opacity: m.opacity!=null ? m.opacity : 0.6, visible: m.visible!==false
+    });
+  }
   undoStack.length=0; redoStack.length=0; refreshUndoButtons();
   return hd;
 }
 /* importe un fichier .bopmap comme NOUVEAU projet (n'écrase jamais le projet actuellement ouvert) */
-function importProjectFile(u8, name){
-  openProjectBuffer(u8);
+async function importProjectFile(u8, name){
+  await openProjectBuffer(u8);
   curProjectId = 'p_' + Date.now().toString(36) + Math.random().toString(36).slice(2,8);
   curProjectName = name || 'Projet importé';
-  bgLayers = [];                          // le fichier .bopmap ne transporte pas d'images de fond
+  bgDirtyForSave = true;                  // les images embarquées doivent être ré-enregistrées dans le projet
+  setTransformLayer(null);
   enterEditor();
+  needRaster();
   doAutoSave();
   refreshHomeGrid();
 }
@@ -2576,6 +2610,7 @@ $('#home-new').addEventListener('click', ()=>{
   npBgFile = null; $('#np-bgname').textContent = '';
   openSheet('#newproj');
 });
+$('#home-import').addEventListener('click', ()=>$('#fileproj').click());
 $('#np-bgpick').addEventListener('click', ()=>$('#np-bgfile').click());
 $('#np-bgfile').addEventListener('change', e=>{
   const f = e.target.files[0]; e.target.value='';
