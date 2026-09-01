@@ -160,7 +160,12 @@ le navigateur ; le bouton **« Plein écran »** de Réglages dépanne dans ce c
 
 ## Licence
 
-[MIT](LICENSE).
+[PolyForm Noncommercial 1.0.0](LICENSE) — © 2026 Farrey.
+
+Libre d'utilisation, de modification et de partage **pour tout usage non
+commercial** (perso, associatif, éducatif, recherche…). L'usage commercial
+(revente, intégration dans un produit ou un service payant) nécessite un accord
+séparé — ouvrez une *issue* pour en discuter.
 
 ## Contribuer
 

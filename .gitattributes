@@ -1,0 +1,4 @@
+# Normalise les fins de ligne : LF dans le dépôt, natif en checkout.
+* text=auto eol=lf
+*.png binary
+*.bopmap binary
