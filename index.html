@@ -134,6 +134,8 @@
   #hud .mini{border:1px solid var(--line);background:var(--panel2);color:var(--ink);border-radius:8px;
     padding:5px 9px;cursor:pointer;font-size:13px}
   #hud .mini:hover{border-color:var(--accent)}
+  #hud #hud-water{min-width:52px}
+  #hud #hud-water.on{background:#26406e;border-color:#4d7ec0;color:#cfe0ff}
   #savedot{width:8px;height:8px;border-radius:50%;background:#3a3f4b;flex:0 0 8px}
   #savedot.dirty{background:#e0a33a}
   #savedot.ok{background:#4bbf73}
@@ -299,6 +301,7 @@
         <div class="swatch" id="swatch"></div>
         <span class="pid" id="pid">P—</span>
         <button class="mini" id="hud-new">Nouvelle</button>
+        <button class="mini" id="hud-water" title="Terre ou mer : décide de ce que seront les prochaines provinces (T)">Terre</button>
       </div>
       <div class="grp only-prov" id="grp-size">
         <span class="stat">Taille</span>
@@ -391,7 +394,9 @@
       <b>regions.json</b> / <b>countries.json</b>, dans un dossier daté du jour
       (ex. Téléchargements/bme2_export_2026-09-02/). Toujours les mêmes noms de fichier :
       un nouvel export le même jour écrase les précédents du jour, les jours passés restent.
-      Marche mieux sur PC (grande image).</p>
+      Marche mieux sur PC (grande image). Chaque province exporte son <b>type</b>
+      (terre / mer / lac), déduit de son terrain : c'est ce que le moteur lit pour savoir
+      ce qui est de l'eau.</p>
 
     <h3>À propos</h3>
     <p class="muted">BoP Map Editor 2 · <span id="s-version"></span> · © 2026 Farrey —
@@ -506,7 +511,7 @@ let W = DEFAULT_W, H = DEFAULT_H;      // résolution de travail du projet ouver
 let NPX = W*H;
 const MAXID = 65534;                  // limite (Uint16, 0 = vide)
 const MAX_CANVAS_SIDE = 8192;        // borne de sûreté sur un très grand écran
-const APP_VERSION = 'v1.0';
+const APP_VERSION = 'v1.1';
 const AUTOSAVE_MS = 4000;
 const UNDO_MAX = 24;
 const BG_MAXSIDE = 5488;              // le fond est réduit à ça max
@@ -541,12 +546,22 @@ let panMode = false;                 // "main" active, tous modes
 let cDirty = true, rDirty = true;
 
 /* --- infos / édition --- */
-const TERRAINS = ['(non défini)','plaine','collines','forêt','montagne','désert','marais','toundra','lac / eau'];
+/* Les index sont enregistrés dans les projets : ne JAMAIS réordonner, seulement ajouter à la fin. */
+const TERRAINS = ['(non défini)','plaine','collines','forêt','montagne','désert','marais','toundra','lac / eau','mer / océan'];
 const TERRAIN_COL = [                          // couleur d'affichage par terrain (null = non défini)
   null, [124,176,92], [190,168,108], [56,118,64], [138,128,124],
-  [222,200,138], [92,150,148], [176,192,200], [88,140,204]
+  [222,200,138], [92,150,148], [176,192,200], [88,140,204], [38,64,110]
 ];
+const T_LAKE = 8, T_SEA = 9;
 const provTerrain = new Uint8Array(MAXID+1);   // index dans TERRAINS, 0 = non défini
+/* Terre / mer / lac d'une province : déduit du terrain, pas stocké à part, pour qu'il n'y ait
+   qu'une seule source de vérité. C'est ce que le moteur lit pour savoir ce qui est de l'eau. */
+function provKind(id){
+  const t = provTerrain[id];
+  return t===T_SEA ? 'sea' : t===T_LAKE ? 'lake' : 'land';
+}
+function isWaterTerrain(t){ return t===T_SEA || t===T_LAKE; }
+let paintWater = false;               // le pinceau crée-t-il des provinces maritimes ?
 let etarget = 'province';             // quoi on édite : 'province' | 'country' | 'region'
 let eterr = 1;                        // terrain actif du stylo (mode Édition > Province)
 let editSel = null;                   // { kind, id } sélection en cours d'édition
@@ -626,16 +641,50 @@ function hsl2rgb(h,s,l){
   }
   return [Math.round(r*255), Math.round(g*255), Math.round(b*255)];
 }
-function provColor(id){
-  // angle d'or -> teintes bien réparties ; variation légère de L/S
+function provColor(id, water){
+  // L'eau : teintes bleutées et nettement plus sombres (comme HOI4), pour voir d'un coup
+  // d'œil ce qui est mer en peignant. Jamais assez sombre pour approcher le noir, qui veut
+  // dire « aucune province » dans le PNG exporté.
+  if(water){
+    // bleu -> indigo : le bleu pèse peu dans la luminance perçue, donc même les plus
+    // claires restent nettement plus sombres que n'importe quelle terre.
+    const hue = 205 + ((id*137.508) % 62);
+    const l = 0.15 + ((id*0.191)%1)*0.13;
+    const s = 0.35 + ((id*0.311)%1)*0.40;
+    return hsl2rgb(hue, s, l);
+  }
+  // terre : angle d'or -> teintes bien réparties ; variation légère de L/S
   const hue = (id*137.508) % 360;
   const l = 0.46 + ((id*0.191)%1)*0.20;
   const s = 0.50 + ((id*0.311)%1)*0.28;
   return hsl2rgb(hue, s, l);
 }
-function assignColor(id){
-  const c = provColor(id);
+
+/* Deux provinces ne doivent JAMAIS partager une couleur : dans provinces.png la couleur EST
+   l'identité de la province, donc un doublon en fusionne deux à l'import, aux deux bouts du
+   monde. Les formules ci-dessus n'en donnent pas la garantie (elles tombent juste bien pour
+   quelques dizaines de milliers d'ids), alors on la garantit ici : on tient l'ensemble des
+   couleurs prises et on décale la teinte tant que la place est occupée. */
+const usedColors = new Set();
+const packRGB = (r,g,b) => (r<<16)|(g<<8)|b;
+function rebuildUsedColors(){
+  usedColors.clear();
+  for(let id=1; id<=maxId; id++) usedColors.add(packRGB(palR[id],palG[id],palB[id]));
+}
+function assignColor(id, water){
+  const isWater = water!=null ? water : isWaterTerrain(provTerrain[id]);
+  usedColors.delete(packRGB(palR[id],palG[id],palB[id]));   // l'ancienne couleur se libère
+  const base = provColor(id, isWater);
+  const clamp = v => v < 6 ? 6 : v > 250 ? 250 : v;
+  let c = base;
+  // décalage déterministe et minuscule (bleu puis vert) tant que la place est occupée
+  for(let salt=1; salt<16000 && usedColors.has(packRGB(c[0],c[1],c[2])); salt++){
+    const db = (salt % 127) - 63;
+    const dg = (((salt / 127) | 0) % 127) - 63;
+    c = [base[0], clamp(base[1] + dg), clamp(base[2] + db)];
+  }
   palR[id]=c[0]; palG[id]=c[1]; palB[id]=c[2];
+  usedColors.add(packRGB(c[0],c[1],c[2]));
 }
 function setCurId(id){
   curId = id;
@@ -667,6 +716,7 @@ function compactProvinces(){
   provCountry.set(nCty); provRegion.set(nReg); provTerrain.set(nTer);
   const newCur = remap[curId] || present.length;
   maxId = present.length;
+  rebuildUsedColors();
   topProvEmpty = false;
   undoStack.length=0; redoStack.length=0; refreshUndoButtons();
   setCurId(newCur);
@@ -679,9 +729,26 @@ function newProvince(){
   // (évite d'accumuler des provinces vides quand on clique « Nouvelle » 2 fois)
   if(topProvEmpty && maxId>0){ setCurId(maxId); toast('Province P'+maxId+' (encore vide)'); return; }
   if(maxId>=MAXID){ toast('Limite de provinces atteinte'); return; }
-  maxId++; assignColor(maxId); setCurId(maxId);
+  maxId++;
+  provTerrain[maxId] = paintWater ? T_SEA : 0;
+  assignColor(maxId, paintWater);
+  setCurId(maxId);
   topProvEmpty = true;
   markDirty();
+}
+/* Terre <-> Mer pour le pinceau. Ne touche pas aux provinces existantes : ça ne décide que
+   de ce que seront les prochaines. */
+function setPaintWater(on){
+  paintWater = !!on;
+  const b = $('#hud-water');
+  if(b){ b.classList.toggle('on', paintWater); b.textContent = paintWater ? 'Mer' : 'Terre'; }
+  // si la province courante est encore vierge, elle suit le mode plutôt que de rester coincée
+  if(topProvEmpty && curId>0){
+    provTerrain[curId] = paintWater ? T_SEA : 0;
+    assignColor(curId, paintWater);
+    setCurId(curId);
+    markDirty();
+  }
 }
 
 /* --- pays --- */
@@ -1195,6 +1262,8 @@ function applySnapshot(s){
   const idx = s.idx, val = s.val;
   const inv = { kind:s.kind, idx, val:new Uint16Array(idx.length) };
   for(let i=0;i<idx.length;i++){ const p=idx[i]; inv.val[i]=target[p]; target[p]=val[i]; }
+  // la teinte suit le terrain (eau = sombre), il faut donc la refaire en annulant aussi
+  if(s.kind==='terrain'){ for(let i=0;i<idx.length;i++) assignColor(idx[i]); setCurId(curId); }
   return inv;
 }
 function markDirtyFor(kind){
@@ -1429,6 +1498,8 @@ function assignTerrainAt(px,py,terr){
   if(!pid || provTerrain[pid]===terr) return;
   opRecordT(pid, provTerrain[pid]);
   provTerrain[pid] = terr;
+  assignColor(pid);            // passer en mer (ou en sortir) change la teinte
+  setCurId(curId);
   needRaster();
 }
 function beginTerrain(px,py,pointerId,erase){
@@ -1507,7 +1578,11 @@ function escHtml(s){ return String(s==null?'':s).replace(/</g,'&lt;').replace(/>
 function wireEditPanel(k,id){
   const P = $('#editpanel');
   const t = P.querySelector('#ep-terrain');
-  if(t) t.addEventListener('change', e=>{ provTerrain[id] = +e.target.value; markDirty(); });
+  if(t) t.addEventListener('change', e=>{
+    provTerrain[id] = +e.target.value;
+    assignColor(id); setCurId(curId);      // eau = teinte sombre
+    markDirty(); needRaster();
+  });
   const nm = P.querySelector('#ep-name');
   if(nm) nm.addEventListener('input', e=>{
     if(k==='country' && countries[id]){
@@ -1803,6 +1878,7 @@ $('#t-new').addEventListener('click', newProvince);
 $('#c-new').addEventListener('click', newCountry);
 $('#hud-cnew').addEventListener('click', newCountry);
 $('#hud-new').addEventListener('click', newProvince);
+$('#hud-water').addEventListener('click', ()=>setPaintWater(!paintWater));
 $('#r-new').addEventListener('click', newRegion);
 $('#hud-rnew').addEventListener('click', newRegion);
 $('#csel').addEventListener('change', e=>{ setCurCountry(+e.target.value); });
@@ -1870,6 +1946,7 @@ $('#s-reset').addEventListener('click', ()=>{
   provCountry.fill(0); countries.length=1; maxCid=0; curCid=0;
   provRegion.fill(0); regions.length=1; maxRid=0; curRid=0;
   provTerrain.fill(0); editSel=null;
+  usedColors.clear();
   rebuildCountrySelect(); setCurCountry(0);
   rebuildRegionSelect(); setCurRegion(0);
   renderEditPanel();
@@ -2001,6 +2078,7 @@ addEventListener('keydown', e=>{
   else if(k==='g') selectTool('bucket');
   else if(k==='i') selectTool('pick');
   else if(k==='n') newProvince();
+  else if(k==='t') setPaintWater(!paintWater);
   else if(k==='['){ brushPx=Math.max(1,brushPx-2); $('#size').value=brushPx; $('#sizeval').textContent=brushPx; savePrefs(); }
   else if(k===']'){ brushPx=Math.min(90,brushPx+2); $('#size').value=brushPx; $('#sizeval').textContent=brushPx; savePrefs(); }
 });
@@ -2112,9 +2190,10 @@ function buildHeader(){
 function applyHeader(hd){
   maxId = hd.maxId|0;
   for(let id=1; id<=maxId; id++){
-    const c = hd.pal[id] || provColor(id);
+    const c = hd.pal[id] || provColor(id, false);
     palR[id]=c[0]; palG[id]=c[1]; palB[id]=c[2];
   }
+  rebuildUsedColors();
   provCountry.fill(0);
   countries.length = 1;
   maxCid = hd.maxCid|0;
@@ -2400,12 +2479,18 @@ function exportPNG(folder, cb){
   }, 'image/png');
 }
 function buildProvincesJSON(present){
-  const out = { w:W, h:H, terrains:TERRAINS, provinces:[] };
+  // format 2 : chaque province porte son type terre/mer/lac.
+  // « unpainted » est la couleur des pixels sans province dans provinces.png : le moteur
+  // doit la traiter comme du vide, pas comme une province.
+  const out = { format:2, w:W, h:H, unpainted:[0,0,0], terrains:TERRAINS, provinces:[] };
   for(let id=1; id<=maxId; id++){
     if(!present[id]) continue;
     out.provinces.push({
       id, color:[palR[id],palG[id],palB[id]],
-      country: provCountry[id], region: provRegion[id], terrain: provTerrain[id]
+      country: provCountry[id], region: provRegion[id], terrain: provTerrain[id],
+      // terre / mer / lac : le moteur en a besoin pour savoir ce qui est de l'eau
+      // (couleurs de l'océan, côtes, et plus tard la marine et le pathfinding).
+      type: provKind(id)
     });
   }
   return out;
@@ -2570,6 +2655,7 @@ async function createProject(name, w, h, bgFile){
   provCountry.fill(0); countries.length=1; maxCid=0; curCid=0;
   provRegion.fill(0); regions.length=1; maxRid=0; curRid=0;
   provTerrain.fill(0); editSel=null;
+  usedColors.clear();
   rebuildCountrySelect(); setCurCountry(0);
   rebuildRegionSelect(); setCurRegion(0);
   renderEditPanel();

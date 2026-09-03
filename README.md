@@ -70,6 +70,14 @@ le **pays** de la région est **déduit automatiquement** des provinces peintes 
 | Pipette `I` | rend active la région sous le curseur |
 | case « Retirer » ou clic droit | enlève la province de sa région |
 
+### Terre ou mer
+
+Dans la barre du haut en mode **Province**, le bouton **Terre / Mer** (`T`) décide de ce
+que seront les **prochaines** provinces créées. Une province maritime reçoit d'office le
+terrain « mer / océan » et une teinte **bleu sombre**, pour la reconnaître d'un coup d'œil
+en peignant. Changer le terrain d'une province vers (ou depuis) l'eau met sa teinte à jour
+toute seule — le type suit toujours le terrain, il n'y a pas deux réglages à tenir d'accord.
+
 ### Édition
 
 Bouton bascule en haut (icône presse-papier). Trois cibles — **Province** `1` /
@@ -117,8 +125,10 @@ Réglages → **Export complet**. Télécharge dans un dossier daté (ex.
 `bme2_export_2026-09-03/`) :
 
 - **`provinces.png`** — couleur = id de province, à la résolution du projet.
-- **`provinces.json`** — `{ w, h, terrains, provinces:[{id, color, country, region, terrain}] }`
-  (seulement les provinces qui ont encore des pixels).
+- **`provinces.json`** — `{ format:2, w, h, unpainted:[0,0,0], terrains, provinces:[{id, color, country, region, terrain, type}] }`
+  (seulement les provinces qui ont encore des pixels). `type` vaut `land`, `sea` ou
+  `lake`, déduit du terrain : c'est ce que le moteur lit pour savoir ce qui est de l'eau.
+  `unpainted` est la couleur des pixels sans province dans le PNG — à traiter comme du vide.
 - **`regions.json`** — `{ regions:[{id, name, country, population, provinces:[ids]}] }`.
 - **`countries.json`** — `{ countries:[{id, name, tag, regions:[ids]}] }`.
 
