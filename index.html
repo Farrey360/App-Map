@@ -511,7 +511,7 @@ let W = DEFAULT_W, H = DEFAULT_H;      // résolution de travail du projet ouver
 let NPX = W*H;
 const MAXID = 65534;                  // limite (Uint16, 0 = vide)
 const MAX_CANVAS_SIDE = 8192;        // borne de sûreté sur un très grand écran
-const APP_VERSION = 'v1.1';
+const APP_VERSION = 'v1.2';
 const AUTOSAVE_MS = 4000;
 const UNDO_MAX = 24;
 const BG_MAXSIDE = 5488;              // le fond est réduit à ça max
@@ -547,20 +547,26 @@ let cDirty = true, rDirty = true;
 
 /* --- infos / édition --- */
 /* Les index sont enregistrés dans les projets : ne JAMAIS réordonner, seulement ajouter à la fin. */
-const TERRAINS = ['(non défini)','plaine','collines','forêt','montagne','désert','marais','toundra','lac / eau','mer / océan'];
+const TERRAINS = ['(non défini)','plaine','collines','forêt','montagne','désert','marais','toundra','infranchissable','mer / océan'];
 const TERRAIN_COL = [                          // couleur d'affichage par terrain (null = non défini)
   null, [124,176,92], [190,168,108], [56,118,64], [138,128,124],
-  [222,200,138], [92,150,148], [176,192,200], [88,140,204], [38,64,110]
+  [222,200,138], [92,150,148], [176,192,200], [86,82,78], [38,64,110]
 ];
-const T_LAKE = 8, T_SEA = 9;
+const T_IMPASSABLE = 8, T_SEA = 9;
 const provTerrain = new Uint8Array(MAXID+1);   // index dans TERRAINS, 0 = non défini
-/* Terre / mer / lac d'une province : déduit du terrain, pas stocké à part, pour qu'il n'y ait
-   qu'une seule source de vérité. C'est ce que le moteur lit pour savoir ce qui est de l'eau. */
+/* Nature d'une province : déduite du terrain, pas stockée à part, pour qu'il n'y ait qu'une
+   seule source de vérité. C'est ce que le moteur lit.
+     land        : jouable, appartient à un pays
+     sea         : mer / océan
+     impassable  : ni jouable ni cliquable, et pas seulement de l'eau — c'est aussi le cœur
+                   du Sahara, la haute montagne, les lacs. Comme les « wastelands » de HOI4,
+                   ça n'appartient à aucun État. */
 function provKind(id){
   const t = provTerrain[id];
-  return t===T_SEA ? 'sea' : t===T_LAKE ? 'lake' : 'land';
+  return t===T_SEA ? 'sea' : t===T_IMPASSABLE ? 'impassable' : 'land';
 }
-function isWaterTerrain(t){ return t===T_SEA || t===T_LAKE; }
+/* hors jeu : ni pays, ni région */
+function isUnplayable(t){ return t===T_SEA || t===T_IMPASSABLE; }
 let paintWater = false;               // le pinceau crée-t-il des provinces maritimes ?
 let etarget = 'province';             // quoi on édite : 'province' | 'country' | 'region'
 let eterr = 1;                        // terrain actif du stylo (mode Édition > Province)
@@ -641,16 +647,24 @@ function hsl2rgb(h,s,l){
   }
   return [Math.round(r*255), Math.round(g*255), Math.round(b*255)];
 }
-function provColor(id, water){
-  // L'eau : teintes bleutées et nettement plus sombres (comme HOI4), pour voir d'un coup
-  // d'œil ce qui est mer en peignant. Jamais assez sombre pour approcher le noir, qui veut
-  // dire « aucune province » dans le PNG exporté.
-  if(water){
+/* Trois familles de teintes, pour reconnaître la nature d'une province d'un coup d'œil en
+   peignant. Les deux familles hors jeu restent nettement plus sombres que la terre — et
+   jamais assez sombres pour approcher le noir, qui veut dire « aucune province » dans le
+   PNG exporté. `kind` vaut 'land', 'sea' ou 'impassable'. */
+function provColor(id, kind){
+  if(kind === 'sea'){
     // bleu -> indigo : le bleu pèse peu dans la luminance perçue, donc même les plus
     // claires restent nettement plus sombres que n'importe quelle terre.
     const hue = 205 + ((id*137.508) % 62);
     const l = 0.15 + ((id*0.191)%1)*0.13;
     const s = 0.35 + ((id*0.311)%1)*0.40;
+    return hsl2rgb(hue, s, l);
+  }
+  if(kind === 'impassable'){
+    // gris sombre à peine teinté : ni terre jouable, ni mer, on ne doit pas les confondre
+    const hue = (id*137.508) % 360;
+    const l = 0.20 + ((id*0.191)%1)*0.10;
+    const s = 0.05 + ((id*0.311)%1)*0.12;
     return hsl2rgb(hue, s, l);
   }
   // terre : angle d'or -> teintes bien réparties ; variation légère de L/S
@@ -671,10 +685,9 @@ function rebuildUsedColors(){
   usedColors.clear();
   for(let id=1; id<=maxId; id++) usedColors.add(packRGB(palR[id],palG[id],palB[id]));
 }
-function assignColor(id, water){
-  const isWater = water!=null ? water : isWaterTerrain(provTerrain[id]);
+function assignColor(id, kind){
   usedColors.delete(packRGB(palR[id],palG[id],palB[id]));   // l'ancienne couleur se libère
-  const base = provColor(id, isWater);
+  const base = provColor(id, kind || provKind(id));
   const clamp = v => v < 6 ? 6 : v > 250 ? 250 : v;
   let c = base;
   // décalage déterministe et minuscule (bleu puis vert) tant que la place est occupée
@@ -731,7 +744,7 @@ function newProvince(){
   if(maxId>=MAXID){ toast('Limite de provinces atteinte'); return; }
   maxId++;
   provTerrain[maxId] = paintWater ? T_SEA : 0;
-  assignColor(maxId, paintWater);
+  assignColor(maxId, paintWater ? 'sea' : 'land');
   setCurId(maxId);
   topProvEmpty = true;
   markDirty();
@@ -745,7 +758,7 @@ function setPaintWater(on){
   // si la province courante est encore vierge, elle suit le mode plutôt que de rester coincée
   if(topProvEmpty && curId>0){
     provTerrain[curId] = paintWater ? T_SEA : 0;
-    assignColor(curId, paintWater);
+    assignColor(curId, paintWater ? 'sea' : 'land');
     setCurId(curId);
     markDirty();
   }
@@ -1158,16 +1171,16 @@ function scheduleCount(){
   clearTimeout(countTimer);
   countTimer = setTimeout(()=>{
     const tot = countProv();
-    // La mer et les lacs n'ont pas vocation à appartenir à un pays ni à une région : les
+    // La mer et les zones infranchissables n'appartiennent à aucun pays ni région : les
     // compter dans le total empêcherait d'atteindre 100 % quoi qu'on fasse.
-    let land = 0, asg = 0, rasg = 0, water = 0;
+    let land = 0, asg = 0, rasg = 0, offmap = 0;
     for(let id=1; id<=maxId; id++){
-      if(isWaterTerrain(provTerrain[id])){ water++; continue; }
+      if(isUnplayable(provTerrain[id])){ offmap++; continue; }
       land++;
       if(provCountry[id]) asg++;
       if(provRegion[id]) rasg++;
     }
-    $('#pcount').textContent = tot + ' prov.' + (water ? ' · ' + water + ' eau' : '');
+    $('#pcount').textContent = tot + ' prov.' + (offmap ? ' · ' + offmap + ' hors jeu' : '');
     $('#ccount').textContent = asg + '/' + land;
     $('#rcount').textContent = rasg + '/' + land;
   }, 450);
@@ -1579,7 +1592,7 @@ function assignTerrainAt(px,py,terr){
   if(!pid || provTerrain[pid]===terr) return;
   opRecordT(pid, provTerrain[pid]);
   provTerrain[pid] = terr;
-  assignColor(pid);            // passer en mer (ou en sortir) change la teinte
+  assignColor(pid);            // changer de nature (terre / mer / infranchissable) change la teinte
   setCurId(curId);
   needRaster();
 }
@@ -1661,7 +1674,7 @@ function wireEditPanel(k,id){
   const t = P.querySelector('#ep-terrain');
   if(t) t.addEventListener('change', e=>{
     provTerrain[id] = +e.target.value;
-    assignColor(id); setCurId(curId);      // eau = teinte sombre
+    assignColor(id); setCurId(curId);      // hors jeu = teinte sombre
     markDirty(); needRaster();
   });
   const nm = P.querySelector('#ep-name');
@@ -2269,7 +2282,7 @@ function buildHeader(){
 function applyHeader(hd){
   maxId = hd.maxId|0;
   for(let id=1; id<=maxId; id++){
-    const c = hd.pal[id] || provColor(id, false);
+    const c = hd.pal[id] || provColor(id, 'land');
     palR[id]=c[0]; palG[id]=c[1]; palB[id]=c[2];
   }
   rebuildUsedColors();
@@ -2558,17 +2571,24 @@ function exportPNG(folder, cb){
   }, 'image/png');
 }
 function buildProvincesJSON(present){
-  // format 2 : chaque province porte son type terre/mer/lac.
+  // format 2 : chaque province porte son type land / sea / impassable.
   // « unpainted » est la couleur des pixels sans province dans provinces.png : le moteur
   // doit la traiter comme du vide, pas comme une province.
   const out = { format:2, w:W, h:H, unpainted:[0,0,0], terrains:TERRAINS, provinces:[] };
   for(let id=1; id<=maxId; id++){
     if(!present[id]) continue;
+    // La mer et l'infranchissable n'appartiennent à personne. Une province peut avoir
+    // reçu un pays AVANT d'être passée en mer : on ne l'exporte pas, sinon le moteur la
+    // croirait possédée (bande nationale, propriétaire, etc.).
+    const playable = provKind(id) === 'land';
     out.provinces.push({
       id, color:[palR[id],palG[id],palB[id]],
-      country: provCountry[id], region: provRegion[id], terrain: provTerrain[id],
-      // terre / mer / lac : le moteur en a besoin pour savoir ce qui est de l'eau
-      // (couleurs de l'océan, côtes, et plus tard la marine et le pathfinding).
+      country: playable ? provCountry[id] : 0,
+      region:  playable ? provRegion[id]  : 0,
+      terrain: provTerrain[id],
+      // land / sea / impassable : ce que le moteur lit pour savoir ce qui se joue.
+      // impassable = ni jouable ni cliquable (cœur du Sahara, haute montagne, lacs…),
+      // à la manière des wastelands de HOI4 : n'appartient à aucun pays.
       type: provKind(id)
     });
   }
@@ -2578,6 +2598,7 @@ function buildRegionsJSON(present){
   const byRegion = new Map();
   for(let id=1; id<=maxId; id++){
     if(!present[id]) continue;
+    if(provKind(id) !== 'land') continue;      // idem : hors jeu = hors région
     const rid = provRegion[id]; if(!rid) continue;
     if(!byRegion.has(rid)) byRegion.set(rid, []);
     byRegion.get(rid).push(id);

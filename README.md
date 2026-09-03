@@ -76,8 +76,17 @@ le **pays** de la région est **déduit automatiquement** des provinces peintes 
 Dans la barre du haut en mode **Province**, le bouton **Terre / Mer** (`T`) décide de ce
 que seront les **prochaines** provinces créées. Une province maritime reçoit d'office le
 terrain « mer / océan » et une teinte **bleu sombre**, pour la reconnaître d'un coup d'œil
-en peignant. Changer le terrain d'une province vers (ou depuis) l'eau met sa teinte à jour
-toute seule — le type suit toujours le terrain, il n'y a pas deux réglages à tenir d'accord.
+en peignant.
+
+Le terrain **« infranchissable »** (stylo terrain) marque une zone **ni jouable ni
+cliquable** : le cœur du Sahara, la haute montagne, les lacs. Comme les *wastelands* de
+HOI4, elle n'appartient à aucun pays. Teinte **gris sombre**, pour ne pas la confondre
+avec la mer.
+
+Trois natures, donc : **terre** (jouable), **mer**, **infranchissable**. Elles découlent
+toujours du terrain — changer le terrain d'une province met sa teinte à jour toute seule,
+il n'y a pas deux réglages à tenir d'accord. La mer et l'infranchissable sont exclus des
+compteurs pays/région, sinon 100 % serait inatteignable.
 
 ### Édition
 
@@ -128,8 +137,11 @@ Réglages → **Export complet**. Télécharge dans un dossier daté (ex.
 - **`provinces.png`** — couleur = id de province, à la résolution du projet.
 - **`provinces.json`** — `{ format:2, w, h, unpainted:[0,0,0], terrains, provinces:[{id, color, country, region, terrain, type}] }`
   (seulement les provinces qui ont encore des pixels). `type` vaut `land`, `sea` ou
-  `lake`, déduit du terrain : c'est ce que le moteur lit pour savoir ce qui est de l'eau.
-  `unpainted` est la couleur des pixels sans province dans le PNG — à traiter comme du vide.
+  `impassable`, déduit du terrain : c'est ce que le moteur lit pour savoir ce qui se
+  joue. `impassable` = ni jouable ni cliquable, et pas seulement de l'eau — aussi le
+  cœur du Sahara, la haute montagne, les lacs, à la manière des *wastelands* de HOI4 :
+  ça n'appartient à aucun pays. `unpainted` est la couleur des pixels sans province
+  dans le PNG — à traiter comme du vide.
 - **`regions.json`** — `{ regions:[{id, name, country, population, provinces:[ids]}] }`.
 - **`countries.json`** — `{ countries:[{id, name, tag, regions:[ids]}] }`.
 
