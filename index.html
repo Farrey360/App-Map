@@ -1158,11 +1158,18 @@ function scheduleCount(){
   clearTimeout(countTimer);
   countTimer = setTimeout(()=>{
     const tot = countProv();
-    $('#pcount').textContent = tot + ' prov.';
-    let asg = 0, rasg = 0;
-    for(let id=1; id<=maxId; id++){ if(provCountry[id]) asg++; if(provRegion[id]) rasg++; }
-    $('#ccount').textContent = asg + '/' + tot;
-    $('#rcount').textContent = rasg + '/' + tot;
+    // La mer et les lacs n'ont pas vocation à appartenir à un pays ni à une région : les
+    // compter dans le total empêcherait d'atteindre 100 % quoi qu'on fasse.
+    let land = 0, asg = 0, rasg = 0, water = 0;
+    for(let id=1; id<=maxId; id++){
+      if(isWaterTerrain(provTerrain[id])){ water++; continue; }
+      land++;
+      if(provCountry[id]) asg++;
+      if(provRegion[id]) rasg++;
+    }
+    $('#pcount').textContent = tot + ' prov.' + (water ? ' · ' + water + ' eau' : '');
+    $('#ccount').textContent = asg + '/' + land;
+    $('#rcount').textContent = rasg + '/' + land;
   }, 450);
 }
 function markDirty(){ provDirty = true; scheduleSave(); scheduleCount(); }
@@ -1180,13 +1187,18 @@ const undoStack = [], redoStack = [];
 let curOp = null; // { map:Map<idx,old> }
 function opBegin(){ curOp = { map:new Map() }; }
 function opRecord(p, old){ const m = curOp.map; if(!m.has(p)) m.set(p, old); }
+/* Bandes remplies par autofillEnclosed pendant le tracé en cours. Elles voyagent dans la
+   MÊME entrée d'annulation que le trait, pour qu'un seul Ctrl+Z défasse le geste entier. */
+let pendingFillRuns = null;
 function opCommit(){
-  if(!curOp || curOp.map.size===0){ curOp=null; return; }
-  if(curOp.map.size > 3_000_000){ curOp=null; toast('Trop gros pour l\'annulation'); return; }
-  const n = curOp.map.size;
+  const runs = pendingFillRuns; pendingFillRuns = null;
+  const strokeSize = curOp ? curOp.map.size : 0;
+  if(!curOp || (strokeSize===0 && !runs)){ curOp=null; return; }
+  if(strokeSize > 3_000_000){ curOp=null; toast('Trop gros pour l\'annulation'); return; }
+  const n = strokeSize;
   const idx = new Uint32Array(n), val = new Uint16Array(n);
   let k=0; for(const [p,old] of curOp.map){ idx[k]=p; val[k]=old; k++; }
-  undoStack.push({ idx, val });
+  undoStack.push(runs ? { idx, val, runs, runsVal:0 } : { idx, val });
   if(undoStack.length > UNDO_MAX) undoStack.shift();
   redoStack.length = 0;
   curOp = null;
@@ -1258,10 +1270,23 @@ function applySnapshot(s){
     }
     return inv;
   }
+  if(s.kind==='fill'){
+    // op « pot » : des bandes entières remises à une valeur unique, sans tableau par pixel
+    const runs = s.runs;
+    const prev = runs.length ? ids[runs[0]] : 0;
+    for(let i=0; i<runs.length; i+=2) ids.fill(s.val, runs[i], runs[i+1]);
+    return { kind:'fill', runs, val:prev };
+  }
   const target = s.kind==='country' ? provCountry : s.kind==='terrain' ? provTerrain : ids;
   const idx = s.idx, val = s.val;
   const inv = { kind:s.kind, idx, val:new Uint16Array(idx.length) };
   for(let i=0;i<idx.length;i++){ const p=idx[i]; inv.val[i]=target[p]; target[p]=val[i]; }
+  // bandes du remplissage automatique attachées au même geste (cf opCommit)
+  if(s.runs){
+    const prev = s.runs.length ? ids[s.runs[0]] : 0;
+    for(let i=0;i<s.runs.length;i+=2) ids.fill(s.runsVal, s.runs[i], s.runs[i+1]);
+    inv.runs = s.runs; inv.runsVal = prev;
+  }
   // la teinte suit le terrain (eau = sombre), il faut donc la refaire en annulant aussi
   if(s.kind==='terrain'){ for(let i=0;i<idx.length;i++) assignColor(idx[i]); setCurId(curId); }
   return inv;
@@ -1322,66 +1347,122 @@ function strokeSeg(x0,y0,x1,y1,r,id,mode){
   for(let i=0;i<=n;i++){ const t=i/n; stamp(x0+dx*t, y0+dy*t, r, id, mode); }
 }
 
+/* Referme une forme dessinée au stylo : tout le vide que le tracé enferme prend la province.
+   Aucune limite de taille — une province océanique est bien plus grande qu'une province de
+   terre, et c'est justement elle qu'on a besoin de remplir d'un trait. Pour tenir cette
+   échelle sans faire tomber la tablette : propagation par BANDES (la pile ne garde qu'une
+   amorce par bande, pas un pixel), et annulation retenue en bandes elle aussi — le
+   remplissage n'écrit que du vide, donc l'annuler se résume à remettre ces bandes à zéro. */
 function autofillEnclosed(id){
   if(dbx1<0) return 0;
   const M = 40;
   const x0 = Math.max(0,dbx0-M), y0 = Math.max(0,dby0-M);
   const x1 = Math.min(W-1,dbx1+M), y1 = Math.min(H-1,dby1+M);
   const bw = x1-x0+1, bh = y1-y0+1;
-  if(bw*bh > 24_000_000){ return -1; }      // zone trop vaste : on laisse le pot faire
-  const out = new Uint8Array(bw*bh);       // 1 = vide relié au bord de la zone
-  const stack = [];
-  const push = (lx,ly)=>{
-    const li = ly*bw+lx;
-    if(out[li]) return;
-    if(ids[(y0+ly)*W + (x0+lx)] !== 0) return;
-    out[li] = 1; stack.push(li);
+
+  const out = new Uint8Array(bw*bh);       // 1 = vide relié au bord de la zone (= dehors)
+  const stack = [];                        // amorces (lx,ly) à plat
+  const seed = (lx,ly)=>{
+    if(!out[ly*bw+lx] && ids[(y0+ly)*W + (x0+lx)] === 0) stack.push(lx,ly);
   };
-  for(let lx=0;lx<bw;lx++){ push(lx,0); push(lx,bh-1); }
-  for(let ly=0;ly<bh;ly++){ push(0,ly); push(bw-1,ly); }
+  for(let lx=0;lx<bw;lx++){ seed(lx,0); seed(lx,bh-1); }
+  for(let ly=0;ly<bh;ly++){ seed(0,ly); seed(bw-1,ly); }
+
   while(stack.length){
-    const li = stack.pop();
-    const lx = li%bw, ly = (li/bw)|0;
-    if(lx>0)   push(lx-1,ly);
-    if(lx<bw-1)push(lx+1,ly);
-    if(ly>0)   push(lx,ly-1);
-    if(ly<bh-1)push(lx,ly+1);
-  }
-  let filled = 0;
-  for(let ly=0;ly<bh;ly++){
-    const wrow = (y0+ly)*W + x0;
-    for(let lx=0;lx<bw;lx++){
-      if(out[ly*bw+lx]) continue;
-      const p = wrow+lx;
-      if(ids[p]===0){ opRecord(p,0); ids[p]=id; filled++; }
+    const ly = stack.pop(), lx = stack.pop();
+    const lrow = ly*bw, wrow = (y0+ly)*W + x0;
+    if(out[lrow+lx] || ids[wrow+lx] !== 0) continue;
+
+    let l = lx; while(l > 0    && !out[lrow+l-1] && ids[wrow+l-1] === 0) l--;
+    let r = lx; while(r < bw-1 && !out[lrow+r+1] && ids[wrow+r+1] === 0) r++;
+    out.fill(1, lrow+l, lrow+r+1);
+
+    for(let d=-1; d<=1; d+=2){
+      const ny = ly + d;
+      if(ny < 0 || ny >= bh) continue;
+      const nlrow = ny*bw, nwrow = (y0+ny)*W + x0;
+      let inRun = false;
+      for(let xx = l; xx <= r; xx++){
+        if(!out[nlrow+xx] && ids[nwrow+xx] === 0){ if(!inRun){ stack.push(xx,ny); inRun = true; } }
+        else inRun = false;
+      }
     }
   }
-  if(filled) dirtyExpand(x0,y0,x1,y1);
+
+  // ce qui reste vide sans être relié au bord est enfermé par le tracé : on le remplit
+  let filled = 0;
+  const runs = [];
+  for(let ly=0; ly<bh; ly++){
+    const lrow = ly*bw, wrow = (y0+ly)*W + x0;
+    let s = -1;
+    for(let lx=0; lx<=bw; lx++){
+      const inside = lx < bw && !out[lrow+lx] && ids[wrow+lx] === 0;
+      if(inside){ if(s < 0) s = lx; }
+      else if(s >= 0){
+        ids.fill(id, wrow+s, wrow+lx);
+        runs.push(wrow+s, wrow+lx);
+        filled += lx - s;
+        s = -1;
+      }
+    }
+  }
+  if(filled){
+    dirtyExpand(x0,y0,x1,y1);
+    pendingFillRuns = new Int32Array(runs);   // repris par opCommit, dans la MÊME annulation
+  }
   return filled;
 }
 
+/* Remplissage par BANDES (scanline), pas pixel par pixel.
+   Une province maritime couvre facilement plusieurs millions de pixels, là où une province
+   terrestre en fait quelques milliers. L'ancienne version empilait chaque pixel et notait
+   chaque pixel dans une Map pour l'annulation : des centaines de Mo, la tablette mourait
+   bien avant la limite affichée. Ici la pile ne contient qu'une amorce par bande, et
+   l'annulation ne retient que les bandes — quelques milliers d'entiers pour un océan. */
 function bucketFill(bx,by,id){
   bx |= 0; by |= 0;
   if(bx<0||by<0||bx>=W||by>=H) return;
-  const start = by*W+bx;
-  if(ids[start] !== 0){ toast('Le pot ne remplit que le vide'); return; }
-  opBegin(); dirtyReset();
-  const stack = [start];
-  let x0=bx,y0=by,x1=bx,y1=by, count=0;
+  if(ids[by*W+bx] !== 0){ toast('Le pot ne remplit que le vide'); return; }
+
+  dirtyReset();
+  const runs = [];                       // [début, fin) dans le buffer plat, 2 entiers par bande
+  const stack = [bx, by];                // amorces (x,y) à plat, pour ne pas allouer de paires
+  let x0=bx, y0=by, x1=bx, y1=by, count=0;
+
   while(stack.length){
-    const p = stack.pop();
-    if(ids[p] !== 0) continue;
-    opRecord(p,0); ids[p]=id; count++;
-    if(count > 26_000_000){ toast('Zone énorme — arrêt'); break; }
-    const x = p%W, y = (p/W)|0;
-    if(x<x0)x0=x; if(x>x1)x1=x; if(y<y0)y0=y; if(y>y1)y1=y;
-    if(x>0   && ids[p-1]===0) stack.push(p-1);
-    if(x<W-1 && ids[p+1]===0) stack.push(p+1);
-    if(y>0   && ids[p-W]===0) stack.push(p-W);
-    if(y<H-1 && ids[p+W]===0) stack.push(p+W);
+    const y = stack.pop(), x = stack.pop();
+    const row = y*W;
+    if(ids[row+x] !== 0) continue;
+
+    let lx = x; while(lx > 0    && ids[row+lx-1] === 0) lx--;
+    let rx = x; while(rx < W-1  && ids[row+rx+1] === 0) rx++;
+    ids.fill(id, row+lx, row+rx+1);
+    runs.push(row+lx, row+rx+1);
+    count += rx - lx + 1;
+    if(lx<x0)x0=lx; if(rx>x1)x1=rx; if(y<y0)y0=y; if(y>y1)y1=y;
+
+    // une seule amorce par bande contiguë des lignes voisines
+    for(let d=-1; d<=1; d+=2){
+      const ny = y + d;
+      if(ny < 0 || ny >= H) continue;
+      const nrow = ny*W;
+      let inRun = false;
+      for(let xx = lx; xx <= rx; xx++){
+        if(ids[nrow+xx] === 0){ if(!inRun){ stack.push(xx, ny); inRun = true; } }
+        else inRun = false;
+      }
+    }
+    if(runs.length > 8_000_000){ toast('Zone trop découpée — arrêt'); break; }
   }
+
   dirtyExpand(x0,y0,x1,y1);
-  opCommit();
+  if(runs.length){
+    // le pot ne remplit que du vide : annuler = remettre ces bandes à 0, rien à retenir de plus
+    undoStack.push({ kind:'fill', runs:new Int32Array(runs), val:0 });
+    if(undoStack.length > UNDO_MAX) undoStack.shift();
+    redoStack.length = 0;
+    refreshUndoButtons();
+  }
   if(count > 0) topProvEmpty = false;
   markDirty(); needRaster();
 }
@@ -1682,11 +1763,9 @@ function endDraw(){
   if(appMode==='region'){ endRegion(); return; }
   if(appMode==='edit'){ endTerrain(); return; }
   drawId = null; lastBuf = null;
-  if(drawMode==='behind'){
-    const r = autofillEnclosed(curId);
-    if(r === -1) toast('Forme trop grande pour le remplissage auto — utilise le pot');
-  }
-  const drew = curOp && curOp.map.size > 0;
+  let autoFilled = 0;
+  if(drawMode==='behind') autoFilled = autofillEnclosed(curId);
+  const drew = autoFilled > 0 || (curOp && curOp.map.size > 0);
   opCommit();
   if(drew && drawMode !== 'erase') topProvEmpty = false;   // la province active a reçu des pixels
   markDirty();

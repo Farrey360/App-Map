@@ -23,7 +23,8 @@ Ouvre le lien, crée un projet, dessine. Sur mobile/tablette tu peux l'**install
 - On dessine **par-dessus le vide uniquement** : impossible d'écraser une province
   voisine par accident. Les provinces se touchent bord à bord, sans contour ni trou.
 - Fermer le tour d'une province **remplit l'intérieur automatiquement** au lever du
-  stylet (les très grandes formes : utiliser le Pot).
+  stylet, **quelle que soit sa taille** — une province océanique de plusieurs dizaines
+  de millions de pixels se remplit d'un trait, et s'annule d'un seul `Ctrl+Z`.
 - Hiérarchie **Pays → Régions → Provinces**. Une province appartient à une région,
   une région à un pays.
 
@@ -40,7 +41,7 @@ En haut de la barre de gauche, **un bouton bascule** entre **Peinture** et
 | **+** / `N` | nouvelle province (couleur unique auto ; recliquer sans dessiner ne recrée rien) |
 | Pinceau `B` | peint la province active — ne recouvre que le vide |
 | Gomme `E` | repasse une zone en vide |
-| Pot `G` | remplit d'un coup une zone vide fermée |
+| Pot `G` | remplit d'un coup une zone vide fermée — sans limite de taille : une province maritime de plusieurs millions de pixels passe sans problème, et reste annulable |
 | Pipette `I` | reprend une province existante (pour l'agrandir) |
 | `[` `]` | taille du pinceau |
 
