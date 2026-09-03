@@ -1435,7 +1435,17 @@ function autofillEnclosed(id){
 function bucketFill(bx,by,id){
   bx |= 0; by |= 0;
   if(bx<0||by<0||bx>=W||by>=H) return;
-  if(ids[by*W+bx] !== 0){ toast('Le pot ne remplit que le vide'); return; }
+
+  const target = ids[by*W+bx];
+  if(target !== 0){
+    // Écraser une province existante : on remplace la province ENTIÈRE, pas seulement la
+    // tache sous le curseur, pour que « repasser cette province en une autre » soit un seul
+    // clic même si elle a des morceaux détachés (îles).
+    if(!overwrite){ toast('Coche « Écraser » pour remplacer une province'); return; }
+    if(target === id){ toast('Déjà cette province'); return; }
+    replaceProvince(target, id);
+    return;
+  }
 
   dirtyReset();
   const runs = [];                       // [début, fin) dans le buffer plat, 2 entiers par bande
@@ -1478,6 +1488,40 @@ function bucketFill(bx,by,id){
   }
   if(count > 0) topProvEmpty = false;
   markDirty(); needRaster();
+}
+
+/* Remplace tous les pixels de la province `from` par `to`. Une seule passe linéaire sur le
+   buffer, et l'annulation retenue en bandes comme le reste : l'ancienne valeur est la même
+   partout (c'est `from`), donc défaire revient à repeindre ces bandes en `from`. */
+function replaceProvince(from, to){
+  const runs = [];
+  let count = 0;
+  let x0=W, y0=H, x1=-1, y1=-1;
+  for(let y=0; y<H; y++){
+    const row = y*W;
+    let s = -1;
+    for(let x=0; x<=W; x++){
+      if(x < W && ids[row+x] === from){ if(s < 0) s = x; }
+      else if(s >= 0){
+        ids.fill(to, row+s, row+x);
+        runs.push(row+s, row+x);
+        count += x - s;
+        if(s<x0)x0=s; if(x-1>x1)x1=x-1; if(y<y0)y0=y; if(y>y1)y1=y;
+        s = -1;
+      }
+    }
+  }
+  if(!count){ toast('Province introuvable'); return; }
+
+  dirtyReset(); dirtyExpand(x0,y0,x1,y1);
+  undoStack.push({ kind:'fill', runs:new Int32Array(runs), val:from });
+  if(undoStack.length > UNDO_MAX) undoStack.shift();
+  redoStack.length = 0;
+  refreshUndoButtons();
+
+  topProvEmpty = false;
+  markDirty(); needRaster();
+  toast('Province P' + from + ' remplacée (' + count.toLocaleString('fr-FR') + ' px)');
 }
 
 /* ============================ entrées pointeur ============================ */

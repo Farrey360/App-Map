@@ -41,7 +41,7 @@ En haut de la barre de gauche, **un bouton bascule** entre **Peinture** et
 | **+** / `N` | nouvelle province (couleur unique auto ; recliquer sans dessiner ne recrée rien) |
 | Pinceau `B` | peint la province active — ne recouvre que le vide |
 | Gomme `E` | repasse une zone en vide |
-| Pot `G` | remplit d'un coup une zone vide fermée — sans limite de taille : une province maritime de plusieurs millions de pixels passe sans problème, et reste annulable |
+| Pot `G` | sur du **vide** : remplit d'un coup la zone fermée — sans limite de taille, une province maritime de plusieurs millions de pixels passe sans problème. Sur une **province existante**, avec « Écraser » coché : la remplace **entièrement** par la province active, morceaux détachés compris. Toujours annulable d'un `Ctrl+Z` |
 | Pipette `I` | reprend une province existante (pour l'agrandir) |
 | `[` `]` | taille du pinceau |
 
