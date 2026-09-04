@@ -310,6 +310,7 @@
       </div>
       <label class="chk only-prov"><input type="checkbox" id="pressure" checked> Pression</label>
       <label class="chk only-prov"><input type="checkbox" id="overwrite"> Écraser</label>
+      <label class="chk only-prov" title="Pot : ne remplacer que la tache sous le doigt, pas les autres morceaux de la même province (îles, exclaves)"><input type="checkbox" id="zoneonly"> Zone seule</label>
 
       <div class="grp only-country" id="grp-country">
         <div class="swatch" id="cswatch"></div>
@@ -430,6 +431,7 @@
       <tr><td>Nouvelle province</td><td>bouton <b>+</b> ou <kbd>N</kbd> — nouvelle couleur</td></tr>
       <tr><td>Pinceau / Gomme</td><td><kbd>B</kbd> / <kbd>E</kbd></td></tr>
       <tr><td>Pot (remplit le vide)</td><td><kbd>G</kbd></td></tr>
+      <tr><td>Pot sur une province</td><td>coche <b>Écraser</b> — toute la province change ; ajoute <b>Zone seule</b> pour ne changer que la tache cliquée</td></tr>
       <tr><td>Pipette (reprendre une province)</td><td><kbd>I</kbd> — puis pinceau pour l'agrandir</td></tr>
       <tr><td>Déplacer la vue</td><td>2 doigts, ou outil Main <kbd>H</kbd>, ou clic molette</td></tr>
       <tr><td>Zoom</td><td>pincer à 2 doigts, ou molette</td></tr>
@@ -577,6 +579,7 @@ let tool = 'brush';
 let brushPx = 14;                     // taille en px écran
 let usePressure = true;
 let overwrite = false;
+let zoneOnly  = false;   // pot : remplacer la seule tache cliquée au lieu de la province entière
 let showEdges = false;               // aide visuelle uniquement, OFF par défaut (couleurs pures)
 let allowFinger = true;
 let autoSaveOn = true;
@@ -1438,12 +1441,14 @@ function bucketFill(bx,by,id){
 
   const target = ids[by*W+bx];
   if(target !== 0){
-    // Écraser une province existante : on remplace la province ENTIÈRE, pas seulement la
-    // tache sous le curseur, pour que « repasser cette province en une autre » soit un seul
-    // clic même si elle a des morceaux détachés (îles).
+    // Écraser une province existante : par défaut on remplace la province ENTIÈRE, pas
+    // seulement la tache sous le curseur, pour que « repasser cette province en une autre »
+    // soit un seul clic même si elle a des morceaux détachés (îles). La case « Zone seule »
+    // fait l'inverse : elle ne touche que le morceau cliqué.
     if(!overwrite){ toast('Coche « Écraser » pour remplacer une province'); return; }
     if(target === id){ toast('Déjà cette province'); return; }
-    replaceProvince(target, id);
+    if(zoneOnly) replaceZone(target, id, bx, by);
+    else replaceProvince(target, id);
     return;
   }
 
@@ -1488,6 +1493,54 @@ function bucketFill(bx,by,id){
   }
   if(count > 0) topProvEmpty = false;
   markDirty(); needRaster();
+}
+
+/* Ne remplace que la tache CONTIGUË sous le curseur, pas les autres morceaux de la même
+   province. Même remplissage par bandes que le pot, et même annulation que replaceProvince :
+   tous les pixels touchés valaient `from`, donc défaire = les repeindre en `from`.
+   Voisinage 8 : deux bouts qui ne se tiennent que par un coin forment une seule tache à
+   l'œil, ils doivent donc partir ensemble. */
+function replaceZone(from, to, bx, by){
+  const runs = [];
+  const stack = [bx, by];
+  let x0=bx, y0=by, x1=bx, y1=by, count=0;
+
+  while(stack.length){
+    const y = stack.pop(), x = stack.pop();
+    const row = y*W;
+    if(ids[row+x] !== from) continue;   // déjà repeint : le remplissage sert lui-même de marque
+
+    let lx = x; while(lx > 0    && ids[row+lx-1] === from) lx--;
+    let rx = x; while(rx < W-1  && ids[row+rx+1] === from) rx++;
+    ids.fill(to, row+lx, row+rx+1);
+    runs.push(row+lx, row+rx+1);
+    count += rx - lx + 1;
+    if(lx<x0)x0=lx; if(rx>x1)x1=rx; if(y<y0)y0=y; if(y>y1)y1=y;
+
+    for(let d=-1; d<=1; d+=2){
+      const ny = y + d;
+      if(ny < 0 || ny >= H) continue;
+      const nrow = ny*W;
+      const a = Math.max(0, lx-1), b = Math.min(W-1, rx+1);   // ±1 = les diagonales
+      let inRun = false;
+      for(let xx = a; xx <= b; xx++){
+        if(ids[nrow+xx] === from){ if(!inRun){ stack.push(xx, ny); inRun = true; } }
+        else inRun = false;
+      }
+    }
+    if(runs.length > 8_000_000){ toast('Zone trop découpée — arrêt'); break; }
+  }
+  if(!count) return;
+
+  dirtyReset(); dirtyExpand(x0,y0,x1,y1);
+  undoStack.push({ kind:'fill', runs:new Int32Array(runs), val:from });
+  if(undoStack.length > UNDO_MAX) undoStack.shift();
+  redoStack.length = 0;
+  refreshUndoButtons();
+
+  topProvEmpty = false;
+  markDirty(); needRaster();
+  toast('Zone de P' + from + ' remplacée (' + count.toLocaleString('fr-FR') + ' px)');
 }
 
 /* Remplace tous les pixels de la province `from` par `to`. Une seule passe linéaire sur le
@@ -2047,6 +2100,7 @@ $('#s-help').addEventListener('click', ()=>{ $('#settings').hidden=true; openShe
 $('#size').addEventListener('input', e=>{ brushPx = +e.target.value; $('#sizeval').textContent = brushPx; savePrefs(); });
 $('#pressure').addEventListener('change', e=>{ usePressure = e.target.checked; savePrefs(); });
 $('#overwrite').addEventListener('change', e=> overwrite = e.target.checked);
+$('#zoneonly').addEventListener('change', e=> zoneOnly = e.target.checked);
 
 function openSheet(sel){ $(sel).hidden = false; }
 document.querySelectorAll('.sheet').forEach(s=>{
