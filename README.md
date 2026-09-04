@@ -70,6 +70,13 @@ le **pays** de la région est **déduit automatiquement** des provinces peintes 
 | Fusionner `R` | touche une province → sa région est absorbée par la région active |
 | Pipette `I` | rend active la région sous le curseur |
 | case « Retirer » ou clic droit | enlève la province de sa région |
+| case « Pays » / `C` | les pays en transparence par-dessus (voir ci-dessous) |
+
+En mode Régions, la case **« Pays »** (raccourci `C`, allumée par défaut) teinte la carte
+avec la **couleur du pays** de chaque province et souligne les **frontières nationales**
+d'un trait. Les couleurs de régions restent lisibles au travers : on voit d'un coup d'œil
+où s'arrête un pays pendant qu'on découpe ses régions, et une région qui déborde sur le
+voisin se repère tout de suite. Le trait reste visible même dézoomé.
 
 ### Terre ou mer
 

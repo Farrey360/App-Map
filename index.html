@@ -341,6 +341,7 @@
         <button class="mini" id="hud-rnew">Nouvelle région</button>
         <button class="mini danger" id="hud-rdel" title="Supprimer la région affichee">×</button>
         <label class="chk"><input type="checkbox" id="rerase"> Retirer</label>
+        <label class="chk" title="Voir les pays en transparence par-dessus, pour savoir où ils s'arrêtent (C)"><input type="checkbox" id="rshowc" checked> Pays</label>
         <span class="stat" id="rcount">0/0</span>
       </div>
 
@@ -529,7 +530,7 @@ let W = DEFAULT_W, H = DEFAULT_H;      // résolution de travail du projet ouver
 let NPX = W*H;
 const MAXID = 65534;                  // limite (Uint16, 0 = vide)
 const MAX_CANVAS_SIDE = 8192;        // borne de sûreté sur un très grand écran
-const APP_VERSION = 'v1.2';
+const APP_VERSION = 'v1.3';
 const AUTOSAVE_MS = 4000;
 const UNDO_MAX = 24;
 const BG_MAXSIDE = 5488;              // le fond est réduit à ça max
@@ -597,6 +598,7 @@ let usePressure = true;
 let overwrite = false;
 let zoneOnly  = false;   // pot : remplacer la seule tache cliquée au lieu de la province entière
 let showEdges = false;               // aide visuelle uniquement, OFF par défaut (couleurs pures)
+let showCountryOver = true;          // mode Régions : les pays en transparence par-dessus, pour voir où ils s'arrêtent
 let allowFinger = true;
 let autoSaveOn = true;
 
@@ -921,6 +923,12 @@ function rebuildRegionSelect(){
   if(curRid>0 && regions[curRid]) sel.value = String(curRid);
 }
 function firstRegion(){ for(let rid=1; rid<=maxRid; rid++) if(regions[rid]) return rid; return 0; }
+function setCountryOver(on){
+  showCountryOver = !!on;
+  const el = $('#rshowc'); if(el) el.checked = showCountryOver;
+  toast(showCountryOver ? 'Pays visibles' : 'Pays masqués');
+  needRaster(); savePrefs();
+}
 /* Même principe pour une région ; l'annulation passe par le `del` déjà en place pour la
    fusion de régions. Les provinces de la région repassent sans région. */
 function deleteRegion(rid){
@@ -1043,6 +1051,14 @@ function rasterCore(sx0,sy0,sx1,sy1){
   const nBg = bgActive.length;
   const countryView = appMode === 'country';
   const regionView = appMode === 'region';
+  // mode Régions : calque des pays en transparence par-dessus, + trait sur les frontières
+  // nationales, pour voir où s'arrête chaque pays pendant qu'on peint les régions.
+  const ctyOver = regionView && showCountryOver;
+  const CO = 0.42, CIO = 1 - CO;                              // opacité du calque pays
+  // au dézoom un pixel écran saute plusieurs pixels carte : on regarde le voisin d'autant
+  // plus loin, sinon le trait de frontière disparaît à l'échantillonnage.
+  const bstep = ctyOver ? Math.min(6, Math.max(1, (1/cam.zoom)|0)) : 1;
+  const bstepW = bstep * W;
   const editView = appMode === 'edit';
   const et = etarget;
   const selKind = editSel ? editSel.kind : '';
@@ -1086,11 +1102,24 @@ function rasterCore(sx0,sy0,sx1,sy1){
       }
       if(regionView){
         const rid = provRegion[id];
-        if(rid && regions[rid]){
-          b32[o] = 0xff000000 | (rpalB[rid]<<16) | (rpalG[rid]<<8) | rpalR[rid];
-        } else {
-          b32[o] = 0xff000000 | (((palB[id]*0.32)|0)<<16) | (((palG[id]*0.32)|0)<<8) | ((palR[id]*0.32)|0);
+        let cr, cg, cb;
+        if(rid && regions[rid]){ cr=rpalR[rid]; cg=rpalG[rid]; cb=rpalB[rid]; }
+        else { cr=(palR[id]*0.32)|0; cg=(palG[id]*0.32)|0; cb=(palB[id]*0.32)|0; }
+        if(ctyOver){
+          const cid = provCountry[id];
+          if(cid){
+            cr = (cpalR[cid]*CO + cr*CIO)|0;
+            cg = (cpalG[cid]*CO + cg*CIO)|0;
+            cb = (cpalB[cid]*CO + cb*CIO)|0;
+          }
+          if((bx+bstep<W && provCountry[ids[p+bstep]]!==cid) ||
+             (by+bstep<H && provCountry[ids[p+bstepW]]!==cid)){
+            // trait lisible sur n'importe quelle couleur : sombre sur clair, clair sur sombre
+            if(cr+cg+cb > 300){ cr=(cr*0.22)|0; cg=(cg*0.22)|0; cb=(cb*0.22)|0; }
+            else { cr=(cr*0.35+155)|0; cg=(cg*0.35+155)|0; cb=(cb*0.35+155)|0; }
+          }
         }
+        b32[o] = 0xff000000 | (cb<<16) | (cg<<8) | cr;
         continue;
       }
       if(editView){
@@ -2226,6 +2255,7 @@ document.querySelectorAll('.sheet').forEach(s=>{
 
 /* settings bindings */
 $('#s-edges').addEventListener('change', e=>{ showEdges=e.target.checked; needRaster(); savePrefs(); });
+$('#rshowc').addEventListener('change', e=>{ showCountryOver=e.target.checked; needRaster(); savePrefs(); });
 $('#s-finger').addEventListener('change', e=>{ allowFinger=e.target.checked; savePrefs(); });
 $('#s-fullscreen').addEventListener('click', ()=>{
   const el = document.documentElement;
@@ -2370,6 +2400,7 @@ addEventListener('keydown', e=>{
     else if(k==='a') selectRTool('assign');
     else if(k==='r') selectRTool('merge');
     else if(k==='i') selectRTool('rpick');
+    else if(k==='c') setCountryOver(!showCountryOver);
     return;
   }
   if(appMode==='edit'){
@@ -2666,7 +2697,7 @@ function idbDelete(store, key){
 
 /* ============================ préférences (globales, pas liées à un projet) ============================ */
 function currentPrefs(){
-  return { allowFinger, usePressure, showEdges, autoSaveOn, brushPx };
+  return { allowFinger, usePressure, showEdges, showCountryOver, autoSaveOn, brushPx };
 }
 function savePrefs(){ idbPut('kv', currentPrefs(), 'prefs'); }
 function applyPrefs(p){
@@ -2674,11 +2705,13 @@ function applyPrefs(p){
   if(p.allowFinger!=null) allowFinger = p.allowFinger;
   if(p.usePressure!=null) usePressure = p.usePressure;
   if(p.showEdges!=null) showEdges = p.showEdges;
+  if(p.showCountryOver!=null) showCountryOver = p.showCountryOver;
   if(p.autoSaveOn!=null) autoSaveOn = p.autoSaveOn;
   if(p.brushPx!=null) brushPx = p.brushPx;
   $('#s-finger').checked = allowFinger;
   $('#pressure').checked = usePressure;
   $('#s-edges').checked = showEdges;
+  $('#rshowc').checked = showCountryOver;
   $('#s-auto').checked = autoSaveOn;
   $('#size').value = brushPx; $('#sizeval').textContent = brushPx;
 }
