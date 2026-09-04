@@ -144,6 +144,8 @@
   #hud .mini{border:1px solid var(--line);background:var(--panel2);color:var(--ink);border-radius:8px;
     padding:5px 9px;cursor:pointer;font-size:13px}
   #hud .mini:hover{border-color:var(--accent)}
+  #hud .mini.danger,#editpanel .mini.danger{color:#e8776f}
+  #hud .mini.danger:hover,#editpanel .mini.danger:hover{border-color:#e8776f}
   #hud #hud-water{min-width:52px}
   #hud #hud-water.on{background:#26406e;border-color:#4d7ec0;color:#cfe0ff}
   #savedot{width:8px;height:8px;border-radius:50%;background:#3a3f4b;flex:0 0 8px}
@@ -327,6 +329,7 @@
         <select id="csel" class="mini"></select>
         <input id="cname" class="cname" placeholder="nom du pays" autocomplete="off">
         <button class="mini" id="hud-cnew">Nouveau pays</button>
+        <button class="mini danger" id="hud-cdel" title="Supprimer le pays affiche">×</button>
         <label class="chk"><input type="checkbox" id="cerase"> Retirer</label>
         <span class="stat" id="ccount">0/0</span>
       </div>
@@ -336,6 +339,7 @@
         <select id="rsel" class="mini" title="région active"></select>
         <input id="rname" class="cname" placeholder="nom de la région" autocomplete="off">
         <button class="mini" id="hud-rnew">Nouvelle région</button>
+        <button class="mini danger" id="hud-rdel" title="Supprimer la région affichee">×</button>
         <label class="chk"><input type="checkbox" id="rerase"> Retirer</label>
         <span class="stat" id="rcount">0/0</span>
       </div>
@@ -448,6 +452,7 @@
       <tr><td>Annuler / Rétablir</td><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd></td></tr>
       <tr><td>Taille du pinceau</td><td><kbd>[</kbd> <kbd>]</kbd></td></tr>
       <tr><td>Voir toute la carte</td><td><kbd>F</kbd></td></tr>
+      <tr><td>Supprimer un pays / une région</td><td>bouton <b>×</b> à côté de « Nouveau », ou en mode Édition — <kbd>Ctrl</kbd>+<kbd>Z</kbd> annule</td></tr>
       <tr><td>Couleur d'un pays</td><td>appuie sur son <b>nuancier</b> dans la barre du haut, ou champ <b>Couleur</b> en mode Édition</td></tr>
     </table>
     <h2 style="margin-top:18px">Peinture et Édition</h2>
@@ -807,6 +812,38 @@ function newCountry(){
   setCurCountry(maxCid);
   markDirtyC();
 }
+function firstCountry(){ for(let cid=1; cid<=maxCid; cid++) if(countries[cid]) return cid; return 0; }
+/* Supprimer un pays créé par erreur. Son numéro n'est JAMAIS réutilisé : le trou reste
+   (countries[cid] = null, exactement comme une région fusionnée), sinon un pays neuf
+   reprendrait le numéro et l'annulation ne saurait plus lequel des deux rendre.
+   Les provinces qui lui appartenaient repassent sans pays : les laisser pointer sur un pays
+   disparu casserait l'affichage. Tout part dans une seule annulation. */
+function deleteCountry(cid){
+  const c = countries[cid];
+  if(!c){ toast('Aucun pays à supprimer'); return; }
+  const pids = [];
+  for(let id=1; id<=maxId; id++) if(provCountry[id]===cid) pids.push(id);
+  const rids = [];
+  for(let rid=1; rid<=maxRid; rid++) if(regions[rid] && regions[rid].country===cid) rids.push(rid);
+  let q = 'Supprimer le pays #' + cid + (c.name ? ' ' + c.name : '') + ' ?';
+  if(pids.length) q += '\n' + pids.length + " province(s) n'auront plus de pays.";
+  if(rids.length) q += '\n' + rids.length + " région(s) n'auront plus de pays.";
+  q += '\n\nCtrl+Z annule.';
+  if(!confirm(q)) return;
+
+  opBeginC();
+  for(const id of pids){ opRecordC(id, cid); provCountry[id] = 0; }
+  for(const rid of rids) regions[rid].country = 0;
+  curOpCDel = { cid, obj:c, col:[cpalR[cid],cpalG[cid],cpalB[cid]], rids };
+  countries[cid] = null;
+  opCommitC();
+
+  rebuildCountrySelect();
+  if(curCid === cid) setCurCountry(firstCountry());
+  if(editSel && editSel.kind==='country' && editSel.id===cid){ editSel = null; renderEditPanel(); }
+  markDirtyC(); needRaster();
+  toast('Pays supprimé' + (pids.length ? ' (' + pids.length + ' province(s) libérée(s))' : ''));
+}
 function setCurCountry(cid){
   curCid = cid;
   const sw = $('#cswatch'), nm = $('#cname');
@@ -882,6 +919,31 @@ function rebuildRegionSelect(){
     sel.appendChild(o);
   }
   if(curRid>0 && regions[curRid]) sel.value = String(curRid);
+}
+function firstRegion(){ for(let rid=1; rid<=maxRid; rid++) if(regions[rid]) return rid; return 0; }
+/* Même principe pour une région ; l'annulation passe par le `del` déjà en place pour la
+   fusion de régions. Les provinces de la région repassent sans région. */
+function deleteRegion(rid){
+  const r = regions[rid];
+  if(!r){ toast('Aucune région à supprimer'); return; }
+  const pids = [];
+  for(let id=1; id<=maxId; id++) if(provRegion[id]===rid) pids.push(id);
+  let q = 'Supprimer la région #' + rid + (r.name ? ' ' + r.name : '') + ' ?';
+  if(pids.length) q += '\n' + pids.length + " province(s) n'auront plus de région.";
+  q += '\n\nCtrl+Z annule.';
+  if(!confirm(q)) return;
+
+  opBeginR();
+  for(const id of pids){ opRecordR(id, rid, provCountry[id]); provRegion[id] = 0; }
+  curOpR.del = { rid, obj:r, col:[rpalR[rid],rpalG[rid],rpalB[rid]] };
+  regions[rid] = null;
+  opCommitR();
+
+  rebuildRegionSelect();
+  if(curRid === rid) setCurRegion(firstRegion());
+  if(editSel && editSel.kind==='region' && editSel.id===rid){ editSel = null; renderEditPanel(); }
+  markDirtyR(); needRaster();
+  toast('Région supprimée' + (pids.length ? ' (' + pids.length + ' province(s) libérée(s))' : ''));
 }
 function setCurRegion(rid){
   curRid = rid;
@@ -1247,18 +1309,18 @@ function opCommit(){
   refreshUndoButtons();
 }
 /* --- op "pays" (assignation province -> pays) --- */
-let curOpC = null;
-function opBeginC(){ curOpC = new Map(); }
+let curOpC = null, curOpCDel = null;
+function opBeginC(){ curOpC = new Map(); curOpCDel = null; }
 function opRecordC(pid, old){ if(!curOpC.has(pid)) curOpC.set(pid, old); }
 function opCommitC(){
-  if(!curOpC || curOpC.size===0){ curOpC=null; return; }
+  if(!curOpC || (curOpC.size===0 && !curOpCDel)){ curOpC=null; curOpCDel=null; return; }
   const n = curOpC.size;
   const idx = new Uint32Array(n), val = new Uint16Array(n);
   let k=0; for(const [p,o] of curOpC){ idx[k]=p; val[k]=o; k++; }
-  undoStack.push({ kind:'country', idx, val });
+  undoStack.push({ kind:'country', idx, val, del:curOpCDel });
   if(undoStack.length > UNDO_MAX) undoStack.shift();
   redoStack.length = 0;
-  curOpC = null;
+  curOpC = null; curOpCDel = null;
   refreshUndoButtons();
 }
 /* --- op "région" (province -> région, + pays hérité, + fusion) --- */
@@ -1323,6 +1385,22 @@ function applySnapshot(s){
   const idx = s.idx, val = s.val;
   const inv = { kind:s.kind, idx, val:new Uint16Array(idx.length) };
   for(let i=0;i<idx.length;i++){ const p=idx[i]; inv.val[i]=target[p]; target[p]=val[i]; }
+  if(s.kind==='country' && s.del){
+    // symétrique de la région : le pays est là -> on le retire, il manque -> on le remet
+    const cid = s.del.cid;
+    const back = !countries[cid];
+    if(countries[cid]) countries[cid] = null;
+    else {
+      countries[cid] = s.del.obj;
+      cpalR[cid]=s.del.col[0]; cpalG[cid]=s.del.col[1]; cpalB[cid]=s.del.col[2];
+      if(maxCid < cid) maxCid = cid;
+    }
+    // les régions rattachées retrouvent (ou reperdent) ce pays avec lui
+    for(const rid of (s.del.rids || [])) if(regions[rid]) regions[rid].country = back ? cid : 0;
+    rebuildCountrySelect();
+    if(curCid === cid) setCurCountry(countries[cid] ? cid : firstCountry());
+    inv.del = s.del;
+  }
   // bandes du remplissage automatique attachées au même geste (cf opCommit)
   if(s.runs){
     const prev = s.runs.length ? ids[s.runs[0]] : 0;
@@ -1766,7 +1844,7 @@ function renderEditPanel(){
     h += `<label>Terrain<select id="ep-terrain">` +
          TERRAINS.map((t,i)=>`<option value="${i}"${provTerrain[id]===i?' selected':''}>${t}</option>`).join('') +
          `</select></label>`;
-    h += `<div class="ep-ro">Pays : ${cc?('#'+cc+(countries[cc].name?' '+countries[cc].name:'')):'—'}<br>`+
+    h += `<div class="ep-ro">Pays : ${cc&&countries[cc]?('#'+cc+(countries[cc].name?' '+countries[cc].name:'')):'—'}<br>`+
          `Région : ${rr&&regions[rr]?('#'+rr+(regions[rr].name?' '+regions[rr].name:'')):'—'}</div>`;
   } else if(k==='country'){
     const c = countries[id] || {name:'',tag:''};
@@ -1779,6 +1857,7 @@ function renderEditPanel(){
     h += `<label>Couleur<input id="ep-ccol" type="color" value="${rgb2hex(cpalR[id],cpalG[id],cpalB[id])}"></label>`;
     h += `<button class="mini" id="ep-cauto" title="Reprendre la couleur calculée d'après le numéro du pays">Couleur automatique</button>`;
     h += `<div class="ep-ro">${rc} région(s) · ${pc} province(s)</div>`;
+    h += `<button class="mini danger" id="ep-del" style="margin-top:10px">Supprimer ce pays</button>`;
   } else {
     const r = regions[id];
     if(!r){ editSel=null; return renderEditPanel(); }
@@ -1788,6 +1867,7 @@ function renderEditPanel(){
     h += `<label>Habitants<input id="ep-pop" type="number" min="0" step="1000" value="${r.pop||0}"></label>`;
     h += `<label>Notes<textarea id="ep-notes" rows="3">${escHtml(r.notes||'')}</textarea></label>`;
     h += `<div class="ep-ro">Pays : ${r.country?('#'+r.country+(countries[r.country]&&countries[r.country].name?' '+countries[r.country].name:'')):'—'} · ${pc} province(s)</div>`;
+    h += `<button class="mini danger" id="ep-del" style="margin-top:10px">Supprimer cette région</button>`;
   }
   P.innerHTML = h;
   wireEditPanel(k, id);
@@ -1825,6 +1905,8 @@ function wireEditPanel(k,id){
   if(cc) cc.addEventListener('input', e => setCountryColor(id, ...hex2rgb(e.target.value)));
   const ca = P.querySelector('#ep-cauto');
   if(ca) ca.addEventListener('click', () => setCountryColor(id, ...countryColor(id)));
+  const dl = P.querySelector('#ep-del');
+  if(dl) dl.addEventListener('click', () => k==='country' ? deleteCountry(id) : deleteRegion(id));
   const pop = P.querySelector('#ep-pop');
   if(pop) pop.addEventListener('input', e=>{ if(regions[id]){ regions[id].pop = Math.max(0, e.target.value|0); scheduleSave(); } });
   const nt = P.querySelector('#ep-notes');
@@ -2098,10 +2180,12 @@ $('#t-pan').addEventListener('click', ()=>{ panMode = !panMode; updatePanBtn(); 
 $('#t-new').addEventListener('click', newProvince);
 $('#c-new').addEventListener('click', newCountry);
 $('#hud-cnew').addEventListener('click', newCountry);
+$('#hud-cdel').addEventListener('click', ()=> deleteCountry(curCid));
 $('#hud-new').addEventListener('click', newProvince);
 $('#hud-water').addEventListener('click', ()=>setPaintWater(!paintWater));
 $('#r-new').addEventListener('click', newRegion);
 $('#hud-rnew').addEventListener('click', newRegion);
+$('#hud-rdel').addEventListener('click', ()=> deleteRegion(curRid));
 $('#csel').addEventListener('change', e=>{ setCurCountry(+e.target.value); });
 $('#cname').addEventListener('input', e=>{
   if(curCid>0 && countries[curCid]){ setCountryName(curCid, e.target.value); scheduleSave(); }
@@ -2389,8 +2473,8 @@ function buildHeader(){
   const cts = [null];
   for(let cid=1; cid<=maxCid; cid++){
     const c = countries[cid];
-    cts.push(c ? { n:c.name||'', t:c.tag||'', a:c.tagAuto?1:0, c:[cpalR[cid],cpalG[cid],cpalB[cid]] }
-               : { n:'', c:[cpalR[cid],cpalG[cid],cpalB[cid]] });
+    // null = pays supprimé : le relire comme un pays vide le ferait réapparaître
+    cts.push(c ? { n:c.name||'', t:c.tag||'', a:c.tagAuto?1:0, c:[cpalR[cid],cpalG[cid],cpalB[cid]] } : null);
   }
   const pc = [];
   for(let id=1; id<=maxId; id++) pc.push(provCountry[id]);
@@ -2420,8 +2504,10 @@ function applyHeader(hd){
   provCountry.fill(0);
   countries.length = 1;
   maxCid = hd.maxCid|0;
+  const cs = hd.countries;
   for(let cid=1; cid<=maxCid; cid++){
-    const e = hd.countries && hd.countries[cid];
+    const e = cs ? cs[cid] : undefined;
+    if(cs && !e){ countries[cid] = null; continue; }      // trou laissé par une suppression
     const col = (e && e.c) || countryColor(cid);
     cpalR[cid]=col[0]; cpalG[cid]=col[1]; cpalB[cid]=col[2];
     const tg = (e && e.t) || '';
