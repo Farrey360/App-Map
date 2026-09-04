@@ -109,6 +109,10 @@
     background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;
     padding:6px 8px;font:13px/1.3 inherit}
   #editpanel textarea{resize:vertical}
+  #editpanel input[type=color]{height:34px;padding:2px;cursor:pointer}
+  #editpanel .mini{border:1px solid var(--line);background:var(--panel2);color:var(--ink);
+    border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer}
+  #editpanel .mini:hover{border-color:var(--accent)}
   #editpanel .ep-ro{margin-top:10px;padding-top:9px;border-top:1px solid var(--line);
     font-size:12px;color:var(--ink-dim);line-height:1.6}
   #editpanel .ep-empty{font-size:12px;color:var(--ink-dim);line-height:1.5}
@@ -125,7 +129,13 @@
   #hud{position:absolute;left:8px;right:8px;bottom:8px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;
     background:rgba(21,23,29,.92);border:1px solid var(--line);border-radius:12px;padding:7px 10px;z-index:15;backdrop-filter:blur(6px)}
   #hud .grp{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
-  #hud .swatch{width:26px;height:26px;border-radius:7px;border:1px solid #0006;flex:0 0 26px}
+  #hud .swatch{width:26px;height:26px;border-radius:7px;border:1px solid #0006;flex:0 0 26px;position:relative}
+  /* le nuancier du pays EST le bouton de choix : l'input color natif le recouvre, invisible */
+  #hud .swatch.pick{cursor:pointer}
+  #hud .swatch.pick::after{content:'';position:absolute;right:-1px;bottom:-1px;width:8px;height:8px;
+    border-radius:0 0 6px 0;background:linear-gradient(135deg,transparent 46%,#fff9 46%)}
+  #hud .swatch input[type=color]{position:absolute;inset:0;width:100%;height:100%;
+    opacity:0;border:0;padding:0;margin:0;cursor:pointer}
   #hud .pid{font-variant-numeric:tabular-nums;color:var(--ink-dim);min-width:44px}
   #hud input[type=range]{width:130px;accent-color:var(--accent)}
   #hud .val{font-variant-numeric:tabular-nums;color:var(--ink-dim);min-width:26px;text-align:right}
@@ -313,7 +323,7 @@
       <label class="chk only-prov" title="Pot : ne remplacer que la tache sous le doigt, pas les autres morceaux de la même province (îles, exclaves)"><input type="checkbox" id="zoneonly"> Zone seule</label>
 
       <div class="grp only-country" id="grp-country">
-        <div class="swatch" id="cswatch"></div>
+        <div class="swatch pick" id="cswatch" title="Couleur du pays — appuie pour la changer"><input type="color" id="ccolor" aria-label="Couleur du pays"></div>
         <select id="csel" class="mini"></select>
         <input id="cname" class="cname" placeholder="nom du pays" autocomplete="off">
         <button class="mini" id="hud-cnew">Nouveau pays</button>
@@ -438,6 +448,7 @@
       <tr><td>Annuler / Rétablir</td><td><kbd>Ctrl</kbd>+<kbd>Z</kbd> / <kbd>Ctrl</kbd>+<kbd>Y</kbd></td></tr>
       <tr><td>Taille du pinceau</td><td><kbd>[</kbd> <kbd>]</kbd></td></tr>
       <tr><td>Voir toute la carte</td><td><kbd>F</kbd></td></tr>
+      <tr><td>Couleur d'un pays</td><td>appuie sur son <b>nuancier</b> dans la barre du haut, ou champ <b>Couleur</b> en mode Édition</td></tr>
     </table>
     <h2 style="margin-top:18px">Peinture et Édition</h2>
     <p>En haut à gauche, un bouton bascule entre <b>Peinture</b> (dessiner) et
@@ -773,6 +784,19 @@ function countryColor(cid){
   const l = 0.44 + ((cid*0.137)%1)*0.16;
   return hsl2rgb(hue, 0.58, l);
 }
+const rgb2hex = (r,g,b) => '#' + [r,g,b].map(v => v.toString(16).padStart(2,'0')).join('');
+const hex2rgb = h => [parseInt(h.slice(1,3),16), parseInt(h.slice(3,5),16), parseInt(h.slice(5,7),16)];
+/* La couleur d'un pays était tirée de son numéro et jamais modifiable, alors que le projet
+   la sauvegarde déjà telle quelle (clé `c` de l'en-tête) : il ne manquait que le choix. */
+function setCountryColor(cid, r, g, b){
+  if(cid < 1 || cid > maxCid || !countries[cid]) return;
+  if(cpalR[cid]===r && cpalG[cid]===g && cpalB[cid]===b) return;
+  cpalR[cid]=r; cpalG[cid]=g; cpalB[cid]=b;
+  if(cid === curCid) setCurCountry(cid);                       // nuancier + input du HUD
+  const ec = $('#editpanel').querySelector('#ep-ccol');        // et le panneau d'édition s'il est ouvert
+  if(ec && editSel && editSel.kind==='country' && editSel.id===cid) ec.value = rgb2hex(r,g,b);
+  markDirtyC(); needRaster();
+}
 function newCountry(){
   if(maxCid>=CMAX){ toast('Limite de pays atteinte'); return; }
   maxCid++;
@@ -788,10 +812,12 @@ function setCurCountry(cid){
   const sw = $('#cswatch'), nm = $('#cname');
   if(cid>0 && countries[cid]){
     sw.style.background = `rgb(${cpalR[cid]},${cpalG[cid]},${cpalB[cid]})`;
+    const ci = $('#ccolor'); ci.value = rgb2hex(cpalR[cid],cpalG[cid],cpalB[cid]); ci.disabled = false;
     nm.value = countries[cid].name || ''; nm.disabled = false;
     const sel = $('#csel'); if(sel.value !== String(cid)) sel.value = String(cid);
   } else {
     sw.style.background = 'transparent'; nm.value = ''; nm.disabled = true;
+    $('#ccolor').disabled = true;
   }
 }
 function rebuildCountrySelect(){
@@ -1750,6 +1776,8 @@ function renderEditPanel(){
     h += `<label>Nom<input id="ep-name" value="${escAttr(c.name)}"></label>`;
     h += `<label>Code — 3 lettres, généré d'après le nom, modifiable (vider = revenir à l'auto)`+
          `<input id="ep-tag" maxlength="3" value="${escAttr(c.tag||'')}"></label>`;
+    h += `<label>Couleur<input id="ep-ccol" type="color" value="${rgb2hex(cpalR[id],cpalG[id],cpalB[id])}"></label>`;
+    h += `<button class="mini" id="ep-cauto" title="Reprendre la couleur calculée d'après le numéro du pays">Couleur automatique</button>`;
     h += `<div class="ep-ro">${rc} région(s) · ${pc} province(s)</div>`;
   } else {
     const r = regions[id];
@@ -1793,6 +1821,10 @@ function wireEditPanel(k,id){
     else { c.tag = v; c.tagAuto = false; }
     scheduleSave();
   });
+  const cc = P.querySelector('#ep-ccol');
+  if(cc) cc.addEventListener('input', e => setCountryColor(id, ...hex2rgb(e.target.value)));
+  const ca = P.querySelector('#ep-cauto');
+  if(ca) ca.addEventListener('click', () => setCountryColor(id, ...countryColor(id)));
   const pop = P.querySelector('#ep-pop');
   if(pop) pop.addEventListener('input', e=>{ if(regions[id]){ regions[id].pop = Math.max(0, e.target.value|0); scheduleSave(); } });
   const nt = P.querySelector('#ep-notes');
@@ -2101,6 +2133,7 @@ $('#size').addEventListener('input', e=>{ brushPx = +e.target.value; $('#sizeval
 $('#pressure').addEventListener('change', e=>{ usePressure = e.target.checked; savePrefs(); });
 $('#overwrite').addEventListener('change', e=> overwrite = e.target.checked);
 $('#zoneonly').addEventListener('change', e=> zoneOnly = e.target.checked);
+$('#ccolor').addEventListener('input', e => setCountryColor(curCid, ...hex2rgb(e.target.value)));
 
 function openSheet(sel){ $(sel).hidden = false; }
 document.querySelectorAll('.sheet').forEach(s=>{
@@ -2724,6 +2757,7 @@ function buildCountriesJSON(){
     const c = countries[cid]; if(!c) continue;
     out.countries.push({
       id: cid, name: c.name||'', tag: c.tag||'',
+      color: [cpalR[cid], cpalG[cid], cpalB[cid]],   // celle choisie dans l'éditeur
       regions: byCountry.get(cid) || []
     });
   }

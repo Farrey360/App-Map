@@ -2,7 +2,7 @@
    quand elle est servie en http(s). Inutile en file://.
    Stratégie : "réseau d'abord" pour le HTML/JS (les mises à jour du code
    arrivent toujours), "cache d'abord" pour le reste ; repli cache hors-ligne. */
-const CACHE = 'bme2-v7';
+const CACHE = 'bme2-v8';
 const SHELL = ['./index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
